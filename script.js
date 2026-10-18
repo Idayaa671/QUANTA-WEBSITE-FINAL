@@ -70,6 +70,13 @@ const sha = async t => {
 const slug = s => s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
+let lastWarn = 0;
+function warnLocal() {
+  if (Date.now() - lastWarn > 15000) {
+    lastWarn = Date.now();
+    toast("⚠️ Perubahan hanya tersimpan di perangkat ini karena Firebase belum terhubung.", "err");
+  }
+}
 const withTimeout = (p, ms, label) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(label)), ms))]);
 
 function toast(msg, type = "ok") {
@@ -114,7 +121,12 @@ const db = {
   },
   async check() {
     if (DEMO) return;
+    await fb.set(fb.ref(rdb, "quanta/_cek"), Date.now());
     await fb.get(fb.ref(rdb, "quanta/_cek"));
+  },
+  listen(path, cb) {
+    if (DEMO || !fb?.onValue) return;
+    fb.onValue(fb.ref(rdb, "quanta/" + path), snap => cb(snap.exists() ? snap.val() : null));
   },
   async get(path) {
     path = "quanta/" + path;
@@ -128,6 +140,8 @@ const db = {
   },
   async set(path, val) {
     path = "quanta/" + path;
+    if (path.startsWith("quanta/content")) lastOwnWrite = Date.now();
+    if (DEMO && session && session.role !== "siswa") warnLocal();
     if (DEMO) {
       const root = local.read(), p = parts(path);
       let c = root;
@@ -221,8 +235,9 @@ const DEFAULT_Q = {
 function deepMerge(base, over) {
   if (over === undefined || over === null) return base;
   if (Array.isArray(base)) {
-    const arr = Array.isArray(over) ? over : Object.values(over);
-    return arr.map((v, i) => (typeof v === "object" && v !== null ? deepMerge(base[i] ?? {}, v) : v));
+    const res = base.map((b, i) => (over[i] !== undefined && over[i] !== null ? deepMerge(b, over[i]) : b));
+    Object.keys(over).forEach(k => { const i = Number(k); if (Number.isInteger(i) && i >= base.length) res[i] = over[k]; });
+    return res;
   }
   if (typeof base === "object" && base !== null) {
     const o = { ...base };
@@ -255,17 +270,23 @@ async function seedMateri() {
   const list = buildMateri(raw);
   await db.set("content/materi", Object.fromEntries(list.map(m => [m.id, m])));
 }
-async function loadContent() {
-  const saved = (await db.get("content")) || {};
+let lastContentJson = null, lastOwnWrite = 0;
+function applyContent(raw) {
+  const saved = { ...(raw || {}) };
   const sm = saved.materi;
   delete saved.materi;
   C = deepMerge(DEFAULTS, saved);
   C.materi = buildMateri(sm);
 }
+async function loadContent() {
+  const raw = (await db.get("content")) || {};
+  lastContentJson = JSON.stringify(raw);
+  applyContent(raw);
+}
 async function refresh() { await loadContent(); await route(); }
 
 /* ---------- Modal formulir ---------- */
-function resizeImage(file, max = 480) {
+function resizeImage(file, max = 420) {
   return new Promise((res, rej) => {
     const fr = new FileReader();
     fr.onload = () => {
@@ -276,7 +297,7 @@ function resizeImage(file, max = 480) {
         c.width = Math.round(im.width * k);
         c.height = Math.round(im.height * k);
         c.getContext("2d").drawImage(im, 0, 0, c.width, c.height);
-        res(c.toDataURL("image/jpeg", 0.82));
+        res(c.toDataURL("image/jpeg", 0.8));
       };
       im.onerror = rej;
       im.src = fr.result;
@@ -306,22 +327,33 @@ function openForm({ title, intro = "", fields, onSave, saveLabel = "Simpan" }) {
     <div>${fields.map(fieldHTML).join("")}</div>
     <div class="row end"><button class="btn ghost" data-x type="button">Batal</button><button class="btn" data-save type="button">${esc(saveLabel)}</button></div>
   </div></div>`;
+  const pending = new Set();
   fields.filter(f => f.type === "image").forEach(f => {
     imgs[f.key] = f.value || "";
     $(`#f_${f.key}`).onchange = async e => {
       const file = e.target.files[0];
       if (!file) return;
-      try {
-        imgs[f.key] = await resizeImage(file);
-        const p = $(`#f_${f.key}_p`);
-        p.src = imgs[f.key];
-        p.hidden = false;
-      } catch { toast("Foto tidak bisa dibaca. Coba file lain.", "err"); }
+      const btn = $("[data-save]", root);
+      btn.disabled = true;
+      btn.textContent = "Memproses foto…";
+      const job = (async () => {
+        try {
+          imgs[f.key] = await resizeImage(file);
+          const p = $(`#f_${f.key}_p`);
+          p.src = imgs[f.key];
+          p.hidden = false;
+        } catch { toast("Foto tidak bisa dibaca. Gunakan file JPG atau PNG (bukan HEIC).", "err"); }
+      })();
+      pending.add(job);
+      await job;
+      pending.delete(job);
+      if (!pending.size) { btn.disabled = false; btn.textContent = saveLabel; }
     };
   });
   $("[data-x]", root).onclick = closeModal;
   $(".overlay", root).onclick = e => { if (e.target.classList.contains("overlay")) closeModal(); };
   $("[data-save]", root).onclick = async () => {
+    await Promise.all([...pending]);
     const vals = {};
     fields.forEach(f => { vals[f.key] = f.type === "image" ? imgs[f.key] : $(`#f_${f.key}`).value.trim(); });
     try { await onSave(vals); closeModal(); }
@@ -806,6 +838,13 @@ async function vAdmin(v) {
         <button class="btn" type="button" data-act="edit-links">Ubah tautan</button></section>`;
     } },
     { label: "📋 Nilai Siswa", render: p => renderRekap(p, true) },
+    { label: "🔄 Sinkron", render: async p => {
+      const L = local.read(), src = L.quanta || L;
+      const ada = ["content", "questions", "absensi", "settings"].filter(k => src[k]);
+      p.innerHTML = `<section class="card"><h2>${DEMO ? "🟠 Mode lokal" : "🟢 Terhubung ke Firebase"}</h2>
+        <p>${DEMO ? "Firebase belum terhubung. Semua perubahan hanya tersimpan di perangkat ini dan tidak terlihat di perangkat lain. Perbaiki koneksi (lihat spanduk kuning di atas), lalu muat ulang." : "Perubahan konten, soal, dan absensi langsung terlihat di semua perangkat yang sedang membuka QUANTA."}</p>
+        ${!DEMO && ada.length ? `<p class="think"><span>Data lama di perangkat ini</span>Ada data yang tersimpan lokal (${ada.join(", ")}), misalnya teks atau foto yang kamu edit sebelum Firebase terhubung. Kirim ke Firebase agar tampil di semua perangkat. Data dengan nama yang sama di Firebase akan ditimpa.</p><button class="btn" type="button" data-act="sync-local">Kirim data perangkat ini ke Firebase</button>` : ""}</section>`;
+    } },
     { label: "🗓️ Absensi", render: p => renderAbsensi(p) },
     { label: "🔑 Kode Guru", render: async p => {
       p.innerHTML = `<section class="card"><p>Ganti kode yang dipakai guru untuk masuk. Kode disimpan sebagai hash, bukan teks asli.</p><button class="btn" type="button" data-act="set-teacher-code">Ganti kode guru</button></section>`;
@@ -936,7 +975,13 @@ const ACTIONS = {
     openForm({
       title: t === "utama" ? "Edit pengembang" : `Edit DPA ${Number(t) + 1}`,
       fields: [{ key: "nama", label: "Nama", value: p.nama }, { key: "peran", label: "Peran", value: p.peran }, { key: "foto", label: "Foto", type: "image", value: p.foto }, { key: "deskripsi", label: "Deskripsi", type: "textarea", rows: 5, value: p.deskripsi }],
-      onSave: async v => { await db.set(t === "utama" ? "content/dev/utama" : `content/dev/dpa/${t}`, v); toast("Tersimpan."); await refresh(); }
+      onSave: async v => {
+        const path = t === "utama" ? "content/dev/utama" : `content/dev/dpa/${t}`;
+        await db.set(path, v);
+        if (v.foto && !(await db.get(`${path}/foto`))) throw new Error("foto tidak tersimpan");
+        toast("Tersimpan.");
+        await refresh();
+      }
     });
   },
   "edit-links": () => openForm({
@@ -1034,6 +1079,16 @@ const ACTIONS = {
     a.click();
     URL.revokeObjectURL(a.href);
   },
+  "sync-local": async () => {
+    if (DEMO) return toast("Firebase belum terhubung.", "err");
+    const L = local.read(), src = L.quanta || L;
+    const keys = ["content", "questions", "absensi", "settings"].filter(k => src[k]);
+    if (!keys.length) return toast("Tidak ada data lokal di perangkat ini.", "err");
+    if (!confirm(`Kirim ${keys.join(", ")} dari perangkat ini ke Firebase? Data dengan nama yang sama di Firebase akan ditimpa.`)) return;
+    for (const k of keys) await db.set(k, src[k]);
+    toast("Data perangkat ini sudah dikirim ke Firebase.");
+    await refresh();
+  },
   "set-teacher-code": () => openForm({
     title: "Ganti kode guru",
     fields: [{ key: "k", label: "Kode guru baru", type: "text", hint: "Minimal 6 karakter. Bagikan hanya kepada guru." }],
@@ -1067,7 +1122,7 @@ document.addEventListener("click", e => {
   const b = e.target.closest("[data-act]");
   if (!b || !ACTIONS[b.dataset.act]) return;
   // Penjagaan sisi tampilan; keamanan sebenarnya ada di aturan database.
-  const adminOnly = ["edit-beranda", "edit-doc", "edit-materi", "edit-dev", "edit-links", "set-teacher-code", "add-materi", "del-materi", "move-materi"];
+  const adminOnly = ["edit-beranda", "edit-doc", "edit-materi", "edit-dev", "edit-links", "set-teacher-code", "add-materi", "del-materi", "move-materi", "sync-local"];
   if (adminOnly.includes(b.dataset.act) && !isAdmin()) return;
   const teacherActs = ["add-q", "edit-q", "del-q", "export-csv", "reset-result", "del-student", "del-all-students"];
   if ((teacherActs.includes(b.dataset.act) || b.dataset.act.startsWith("abs-")) && !isTeacher()) return;
@@ -1102,6 +1157,10 @@ function renderChrome(active) {
   nav.hidden = false;
   nav.innerHTML = Object.entries(ROUTES).filter(([, r]) => !r.role || r.role.includes(session.role))
     .map(([k, r]) => `<a href="#/${k}" class="${k === active ? "on" : ""}" ${k === active ? 'aria-current="page"' : ""}><span aria-hidden="true">${r.i}</span>${r.t}</a>`).join("");
+  const sc = $("#syncChip");
+  sc.className = "chip " + (DEMO ? "sync-off" : "sync-on");
+  sc.textContent = DEMO ? "🟠 Lokal" : "🟢 Tersinkron";
+  sc.title = DEMO ? "Firebase belum terhubung: perubahan hanya tersimpan di perangkat ini." : "Terhubung ke Firebase: perubahan terlihat di semua perangkat.";
   const label = { siswa: session.mode === "kelompok" ? "Kelompok" : "Siswa", guru: "Guru", admin: "Admin" }[session.role];
   $("#whoChip").textContent = `${label}: ${session.name}${session.kelas ? " · " + session.kelas : ""}`;
 }
@@ -1128,6 +1187,8 @@ async function route() {
 /* ---------- Mulai ---------- */
 $("#btnLogout").onclick = logout;
 window.addEventListener("hashchange", route);
+const CONTENT_ROUTES = ["beranda", "cp", "tp", "atp", "materi", "video", "eksplorasi", "questika", "pengembang"];
+
 /* Spanduk peringatan bila Firebase gagal terhubung (aplikasi tetap jalan dalam mode lokal) */
 function explainFirebase(e) {
   const m = String(e?.code || e?.message || e);
@@ -1157,6 +1218,15 @@ function showBanner(msg) {
   }
   if (fbProblem) showBanner(fbProblem);
   try { await loadContent(); } catch (e) { console.error(e); }
+  db.listen("content", v => {
+    const j = JSON.stringify(v || {});
+    if (j === lastContentJson) return;
+    lastContentJson = j;
+    applyContent(v);
+    if (Date.now() - lastOwnWrite < 3000) return; // perubahan dari perangkat ini sendiri
+    const key = location.hash.replace(/^#\/?/, "").split("?")[0] || "beranda";
+    if (session && !$("#modalRoot").innerHTML && CONTENT_ROUTES.includes(key)) { route(); toast("Konten diperbarui oleh admin."); }
+  });
   if (session && !sessionStorage.getItem("quanta_last")) touch();
   checkIdle();
   if (DEMO) console.info("QUANTA berjalan dalam MODE LOKAL.");

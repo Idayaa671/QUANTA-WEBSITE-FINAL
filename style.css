@@ -367,7 +367,7 @@ input[type=text],input[type=password],input[type=url],input[type=search],select,
   .syms span{opacity:.05}
   .frame iframe{height:68vh;height:68dvh}
 }
-@media(max-width:380px){.who .chip{display:none}.brand small{display:none}}
+@media(max-width:380px){.who #whoChip{display:none}.brand small{display:none}}
 @media(orientation:landscape) and (max-height:480px){.top{position:static}.modal{max-height:96vh}}
 
 /* ===== Pilihan individu / kelompok (v4) ===== */
@@ -392,3 +392,7 @@ input[type=date]{font:inherit;font-size:16px;font-weight:600;color:var(--ink);pa
 /* ===== Spanduk Firebase (v6) ===== */
 .banner{position:relative;z-index:50;background:#fff1c2;border-bottom:3px solid var(--ink);padding:10px clamp(12px,3vw,32px);font-weight:700;font-size:.92rem;display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
 .banner span{flex:1 1 280px;font-weight:600}
+
+/* ===== Status sinkron (v7) ===== */
+.who .chip.sync-on{background:#c9f7e8;border-color:#c9f7e8}
+.who .chip.sync-off{background:#ffd9a8;border-color:#ffd9a8}
