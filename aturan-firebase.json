@@ -1,0 +1,61 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "quanta": {
+      "ping": {
+        ".read": true
+      },
+      "roles": {
+        "$uid": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".write": "auth != null && auth.uid === $uid && ((auth.token.email === 'admin@quanta.app' && newData.val() === 'admin') || (auth.token.email === 'guru@quanta.app' && newData.val() === 'guru'))"
+        }
+      },
+      "content": {
+        ".read": true,
+        ".write": "auth != null && root.child('quanta/roles').child(auth.uid).val() === 'admin'"
+      },
+      "foto": {
+        ".read": true,
+        ".write": "auth != null && root.child('quanta/roles').child(auth.uid).val() === 'admin'"
+      },
+      "settings": {
+        ".read": "auth != null && root.child('quanta/roles').child(auth.uid).val() === 'admin'",
+        ".write": "auth != null && root.child('quanta/roles').child(auth.uid).val() === 'admin'"
+      },
+      "_uji": {
+        ".read": "auth != null && root.child('quanta/roles').child(auth.uid).val() === 'admin'",
+        ".write": "auth != null && root.child('quanta/roles').child(auth.uid).val() === 'admin'"
+      },
+      "questions": {
+        ".read": "auth != null",
+        ".write": "auth != null && (root.child('quanta/roles').child(auth.uid).val() === 'admin' || root.child('quanta/roles').child(auth.uid).val() === 'guru')"
+      },
+      "absensi": {
+        ".read": "auth != null && (root.child('quanta/roles').child(auth.uid).val() === 'admin' || root.child('quanta/roles').child(auth.uid).val() === 'guru')",
+        ".write": "auth != null && (root.child('quanta/roles').child(auth.uid).val() === 'admin' || root.child('quanta/roles').child(auth.uid).val() === 'guru')"
+      },
+      "users": {
+        ".read": "auth != null && (root.child('quanta/roles').child(auth.uid).val() === 'admin' || root.child('quanta/roles').child(auth.uid).val() === 'guru')",
+        ".write": "auth != null && (root.child('quanta/roles').child(auth.uid).val() === 'admin' || root.child('quanta/roles').child(auth.uid).val() === 'guru')",
+        "$sid": {
+          ".read": "auth != null",
+          ".write": "auth != null",
+          ".validate": "newData.hasChildren(['nama', 'kelas'])"
+        }
+      },
+      "results": {
+        ".read": "auth != null && (root.child('quanta/roles').child(auth.uid).val() === 'admin' || root.child('quanta/roles').child(auth.uid).val() === 'guru')",
+        ".write": "auth != null && (root.child('quanta/roles').child(auth.uid).val() === 'admin' || root.child('quanta/roles').child(auth.uid).val() === 'guru')",
+        "$sid": {
+          ".read": "auth != null",
+          ".write": "auth != null",
+          "$kind": {
+            ".validate": "newData.hasChildren(['skor']) && newData.child('skor').isNumber() && newData.child('skor').val() >= 0 && newData.child('skor').val() <= 100"
+          }
+        }
+      }
+    }
+  }
+}

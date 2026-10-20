@@ -14,6 +14,11 @@ const firebaseConfig = {
   appId: "1:847890761289:web:16236a80ae42795dde6198"
 };
 const FB_VER = "10.12.2";
+const APP_VERSION = "2026.10.20-a";
+// Akun peran di Firebase Authentication (dibuat sekali di Firebase Console).
+// Kode admin dan kode guru = password akun ini.
+const ADMIN_EMAIL = "admin@quanta.app";
+const GURU_EMAIL = "guru@quanta.app";
 
 // Kode disimpan sebagai hash SHA-256, bukan teks asli.
 const ADMIN_HASH = "45c2851252a865f0bfd2858b50663cb64215f3ab7345687e69b7a653209ff9b7";
@@ -106,7 +111,7 @@ function rich(t = "") {
 }
 
 /* ---------- Database (Firebase Realtime DB / mode lokal) ---------- */
-let fb = null, rdb = null;
+let fb = null, rdb = null, fbA = null, auth = null, authBusy = Promise.resolve(), FB_PROBLEM = null;
 const local = {
   read() { try { return JSON.parse(localStorage.getItem("quanta_db")) || {}; } catch { return {}; } },
   write(o) { localStorage.setItem("quanta_db", JSON.stringify(o)); }
@@ -117,16 +122,38 @@ const db = {
     if (DEMO) return;
     const app = await import(`https://www.gstatic.com/firebasejs/${FB_VER}/firebase-app.js`);
     fb = await import(`https://www.gstatic.com/firebasejs/${FB_VER}/firebase-database.js`);
-    rdb = fb.getDatabase(app.initializeApp(firebaseConfig));
+    fbA = await import(`https://www.gstatic.com/firebasejs/${FB_VER}/firebase-auth.js`);
+    const a = app.initializeApp(firebaseConfig);
+    rdb = fb.getDatabase(a);
+    auth = fbA.getAuth(a);
+    await fbA.setPersistence(auth, fbA.browserSessionPersistence); // login Firebase hilang saat tab ditutup
+    if (auth.authStateReady) await auth.authStateReady();
+  },
+  async anon() {
+    if (DEMO) return;
+    await authBusy;
+    if (!auth.currentUser) await fbA.signInAnonymously(auth);
   },
   async check() {
     if (DEMO) return;
-    await fb.set(fb.ref(rdb, "quanta/_cek"), Date.now());
-    await fb.get(fb.ref(rdb, "quanta/_cek"));
+    await this.anon();
+    await fb.get(fb.ref(rdb, "quanta/ping"));
   },
+  async signInRole(role, code) {
+    await authBusy;
+    await fbA.signInWithEmailAndPassword(auth, role === "admin" ? ADMIN_EMAIL : GURU_EMAIL, code);
+    const key = `roles/${auth.currentUser.uid}`;
+    if ((await this.get(key)) !== role) await this.set(key, role);
+  },
+  signOutAll() {
+    if (DEMO) return Promise.resolve();
+    authBusy = (async () => { try { await fbA.signOut(auth); await fbA.signInAnonymously(auth); } catch (e) { console.error(e); } })();
+    return authBusy;
+  },
+  async changePassword(code) { await fbA.updatePassword(auth.currentUser, code); },
   listen(path, cb) {
     if (DEMO || !fb?.onValue) return;
-    fb.onValue(fb.ref(rdb, "quanta/" + path), snap => cb(snap.exists() ? snap.val() : null));
+    fb.onValue(fb.ref(rdb, "quanta/" + path), snap => cb(snap.exists() ? snap.val() : null), e => console.error("listen", e));
   },
   async get(path) {
     path = "quanta/" + path;
@@ -271,6 +298,19 @@ async function seedMateri() {
   await db.set("content/materi", Object.fromEntries(list.map(m => [m.id, m])));
 }
 let lastContentJson = null, lastOwnWrite = 0;
+const FOTO_CACHE = {};
+async function loadFotos() {
+  const list = [["utama", C.dev.utama], ...C.dev.dpa.map((p, i) => [`dpa${i}`, p])];
+  await Promise.all(list.map(async ([id, p]) => {
+    if (p.foto || !p.fotoV) return; // foto lama tersimpan langsung di konten, atau belum ada foto
+    const c = FOTO_CACHE[id];
+    if (c && c.v === p.fotoV) { p.foto = c.data; return; }
+    try {
+      const data = await withTimeout(db.get(`foto/${id}`), 20000, "timeout foto");
+      if (data) { FOTO_CACHE[id] = { v: p.fotoV, data }; p.foto = data; } else p.fotoErr = true;
+    } catch (e) { console.error("foto", id, e); p.fotoErr = true; }
+  }));
+}
 function applyContent(raw) {
   const saved = { ...(raw || {}) };
   const sm = saved.materi;
@@ -282,6 +322,7 @@ async function loadContent() {
   const raw = (await db.get("content")) || {};
   lastContentJson = JSON.stringify(raw);
   applyContent(raw);
+  await loadFotos();
 }
 async function refresh() { await loadContent(); await route(); }
 
@@ -454,6 +495,26 @@ function initParabola(id) {
 }
 
 /* ---------- Login ---------- */
+async function verifyRole(role, code) {
+  if (DEMO) {
+    if (role === "admin") return (await sha(code)) === ADMIN_HASH;
+    return (await sha(code)) === ((await db.get("settings/teacherHash")) || DEFAULT_TEACHER_HASH);
+  }
+  try { await db.signInRole(role, code); return true; }
+  catch (e) {
+    if (/invalid-credential|wrong-password|user-not-found|invalid-login|invalid-email/.test(String(e?.code))) return false;
+    throw e;
+  }
+}
+function authMessage(e) {
+  const c = String(e?.code || e?.message || "");
+  if (/too-many-requests/.test(c)) return "Terlalu banyak percobaan. Tunggu beberapa menit lalu coba lagi.";
+  if (/operation-not-allowed/.test(c)) return "Metode masuk belum diaktifkan di Firebase Authentication.";
+  if (/PERMISSION_DENIED/i.test(c)) return "Akses ditolak oleh Rules database. Pastikan Rules terbaru sudah di-Publish.";
+  if (/network/.test(c)) return "Tidak ada koneksi internet.";
+  return "Gagal masuk. Cek koneksi internetmu.";
+}
+
 function showLogin() {
   $("#top").hidden = true;
   $("#nav").hidden = true;
@@ -516,6 +577,7 @@ function renderLoginForm(role) {
           if (anggota.length < 2) return toast("Tulis minimal 2 nama anggota kelompok.", "err");
           extra = { mode, anggota };
         }
+        await db.anon();
         const uid = slug(`${mode === "kelompok" ? "kelompok-" : ""}${n}-${k}`);
         const old = await db.get(`users/${uid}`);
         if (!old || mode === "kelompok") await db.set(`users/${uid}`, { nama: n, kelas: k, ...extra, dibuat: old?.dibuat || new Date().toISOString() });
@@ -523,20 +585,19 @@ function renderLoginForm(role) {
       } else if (role === "guru") {
         const n = $("#lgNama").value.trim(), kd = $("#lgKode").value;
         if (!n || !kd) return toast("Isi nama dan kode guru.", "err");
-        const target = (await db.get("settings/teacherHash")) || DEFAULT_TEACHER_HASH;
-        if (await sha(kd) !== target) return toast("Kode guru salah.", "err");
+        if (!(await verifyRole("guru", kd))) return toast("Kode guru salah.", "err");
         session = { role, name: n, kelas: "", uid: "guru-" + slug(n) };
       } else {
         const kd = $("#lgKode").value;
         if (!kd) return toast("Isi kode admin.", "err");
-        if (await sha(kd) !== ADMIN_HASH) return toast("Kode admin salah.", "err");
+        if (!(await verifyRole("admin", kd))) return toast("Kode admin salah.", "err");
         session = { role, name: "Admin", kelas: "", uid: "admin" };
       }
       sessionStorage.setItem("quanta_session", JSON.stringify(session));
       touch();
       location.hash = "#/beranda";
       await route();
-    } catch (e) { console.error(e); toast("Gagal masuk. Cek koneksi internetmu.", "err"); }
+    } catch (e) { console.error(e); toast(authMessage(e), "err"); }
   };
   $("#lgGo").onclick = go;
   f.onkeydown = e => {
@@ -569,6 +630,7 @@ addEventListener("pageshow", checkIdle);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) checkIdle(); });
 
 function logout() {
+  db.signOutAll();
   sessionStorage.removeItem("quanta_session");
   sessionStorage.removeItem("quanta_last");
   localStorage.removeItem("quanta_session");
@@ -647,7 +709,7 @@ async function vVideo(v) {
 
 async function vDev(v) {
   const d = C.dev;
-  const photo = p => p.foto ? `<img class="photo" src="${esc(p.foto)}" alt="Foto ${esc(p.nama)}">` : `<div class="photo ph" aria-hidden="true">${esc((p.nama || "?").trim().charAt(0).toUpperCase())}</div>`;
+  const photo = p => p.foto ? `<img class="photo" src="${esc(p.foto)}" alt="Foto ${esc(p.nama)}">` : p.fotoErr ? `<div class="photo ph" title="Foto gagal dimuat. Muat ulang halaman.">⚠️</div>` : `<div class="photo ph" aria-hidden="true">${esc((p.nama || "?").trim().charAt(0).toUpperCase())}</div>`;
   v.innerHTML = pageHead("👩‍💻", "Pengembang", "Orang-orang di balik QUANTA") + `
     <section class="card dev-main">${photo(d.utama)}<div><h2>${esc(d.utama.nama)}</h2><p class="role">${esc(d.utama.peran)}</p><div class="rich">${rich(d.utama.deskripsi)}</div>${editBtn("edit-dev", `data-t="utama"`)}</div></section>
     <h2>Dosen Pembimbing Akademik (DPA)</h2>
@@ -840,14 +902,19 @@ async function vAdmin(v) {
     { label: "📋 Nilai Siswa", render: p => renderRekap(p, true) },
     { label: "🔄 Sinkron", render: async p => {
       const L = local.read(), src = L.quanta || L;
-      const ada = ["content", "questions", "absensi", "settings"].filter(k => src[k]);
+      const ada = ["content", "foto", "questions", "absensi", "settings"].filter(k => src[k]);
       p.innerHTML = `<section class="card"><h2>${DEMO ? "🟠 Mode lokal" : "🟢 Terhubung ke Firebase"}</h2>
         <p>${DEMO ? "Firebase belum terhubung. Semua perubahan hanya tersimpan di perangkat ini dan tidak terlihat di perangkat lain. Perbaiki koneksi (lihat spanduk kuning di atas), lalu muat ulang." : "Perubahan konten, soal, dan absensi langsung terlihat di semua perangkat yang sedang membuka QUANTA."}</p>
-        ${!DEMO && ada.length ? `<p class="think"><span>Data lama di perangkat ini</span>Ada data yang tersimpan lokal (${ada.join(", ")}), misalnya teks atau foto yang kamu edit sebelum Firebase terhubung. Kirim ke Firebase agar tampil di semua perangkat. Data dengan nama yang sama di Firebase akan ditimpa.</p><button class="btn" type="button" data-act="sync-local">Kirim data perangkat ini ke Firebase</button>` : ""}</section>`;
+        ${!DEMO && ada.length ? `<p class="think"><span>Data lama di perangkat ini</span>Ada data yang tersimpan lokal (${ada.join(", ")}), misalnya teks atau foto yang kamu edit sebelum Firebase terhubung. Kirim ke Firebase agar tampil di semua perangkat. Data dengan nama yang sama di Firebase akan ditimpa.</p><button class="btn" type="button" data-act="sync-local">Kirim data perangkat ini ke Firebase</button>` : ""}
+        <p style="margin-top:14px"><button class="btn sky" type="button" data-act="diag">Uji koneksi dan foto</button></p><pre id="diagOut" class="diag"></pre></section>`;
     } },
     { label: "🗓️ Absensi", render: p => renderAbsensi(p) },
     { label: "🔑 Kode Guru", render: async p => {
-      p.innerHTML = `<section class="card"><p>Ganti kode yang dipakai guru untuk masuk. Kode disimpan sebagai hash, bukan teks asli.</p><button class="btn" type="button" data-act="set-teacher-code">Ganti kode guru</button></section>`;
+      p.innerHTML = DEMO
+        ? `<section class="card"><p>Ganti kode yang dipakai guru untuk masuk. Kode disimpan sebagai hash, bukan teks asli.</p><button class="btn" type="button" data-act="set-teacher-code">Ganti kode guru</button></section>`
+        : `<section class="card"><p><b>Kode admin</b> dan <b>kode guru</b> adalah password akun Firebase (${esc(ADMIN_EMAIL)} dan ${esc(GURU_EMAIL)}).</p>
+          <p><button class="btn" type="button" data-act="change-admin-code">Ganti kode admin</button></p>
+          <p class="muted">Untuk mengganti kode guru: Firebase Console → Authentication → Users → hapus akun ${esc(GURU_EMAIL)}, lalu Add user dengan password baru.</p></section>`;
     } }
   ]);
 }
@@ -972,13 +1039,22 @@ const ACTIONS = {
   },
   "edit-dev": b => {
     const t = b.dataset.t, p = t === "utama" ? C.dev.utama : C.dev.dpa[Number(t)];
+    const id = t === "utama" ? "utama" : `dpa${t}`;
     openForm({
       title: t === "utama" ? "Edit pengembang" : `Edit DPA ${Number(t) + 1}`,
       fields: [{ key: "nama", label: "Nama", value: p.nama }, { key: "peran", label: "Peran", value: p.peran }, { key: "foto", label: "Foto", type: "image", value: p.foto }, { key: "deskripsi", label: "Deskripsi", type: "textarea", rows: 5, value: p.deskripsi }],
       onSave: async v => {
         const path = t === "utama" ? "content/dev/utama" : `content/dev/dpa/${t}`;
-        await db.set(path, v);
-        if (v.foto && !(await db.get(`${path}/foto`))) throw new Error("foto tidak tersimpan");
+        const meta = { nama: v.nama, peran: v.peran, deskripsi: v.deskripsi };
+        const changed = v.foto !== (p.foto || "") || (v.foto && !p.fotoV);
+        if (changed && v.foto) {
+          await db.set(`foto/${id}`, v.foto);
+          if ((await db.get(`foto/${id}`)) !== v.foto) throw new Error("foto tidak tersimpan");
+          meta.fotoV = Date.now();
+        } else if (changed) {
+          await db.remove(`foto/${id}`);
+        } else if (p.fotoV) meta.fotoV = p.fotoV;
+        await db.set(path, meta);
         toast("Tersimpan.");
         await refresh();
       }
@@ -1082,12 +1158,43 @@ const ACTIONS = {
   "sync-local": async () => {
     if (DEMO) return toast("Firebase belum terhubung.", "err");
     const L = local.read(), src = L.quanta || L;
-    const keys = ["content", "questions", "absensi", "settings"].filter(k => src[k]);
+    const keys = ["content", "foto", "questions", "absensi", "settings"].filter(k => src[k]);
     if (!keys.length) return toast("Tidak ada data lokal di perangkat ini.", "err");
     if (!confirm(`Kirim ${keys.join(", ")} dari perangkat ini ke Firebase? Data dengan nama yang sama di Firebase akan ditimpa.`)) return;
     for (const k of keys) await db.set(k, src[k]);
     toast("Data perangkat ini sudah dikirim ke Firebase.");
     await refresh();
+  },
+  "change-admin-code": () => openForm({
+    title: "Ganti kode admin",
+    fields: [{ key: "k", label: "Kode admin baru", type: "password", hint: "Minimal 8 karakter, sebaiknya campuran huruf dan angka." }],
+    onSave: async v => {
+      if (v.k.length < 8) { toast("Kode minimal 8 karakter.", "err"); throw new Error("pendek"); }
+      await db.changePassword(v.k);
+      toast("Kode admin diganti. Pakai kode baru saat masuk berikutnya.");
+    }
+  }),
+  "diag": async () => {
+    const out = $("#diagOut"), lines = [];
+    const log = (ok, t) => { lines.push(`${ok ? "✅" : "❌"} ${t}`); out.textContent = lines.join("\n"); };
+    out.textContent = "Menguji…";
+    log(true, `Versi aplikasi: ${APP_VERSION}`);
+    log(true, `Alamat halaman: ${location.origin}${location.pathname}`);
+    if (DEMO) return log(false, `Mode LOKAL, Firebase tidak terhubung. ${FB_PROBLEM || ""}`);
+    log(true, `Database: ${firebaseConfig.databaseURL}`);
+    log(!auth.currentUser?.isAnonymous, `Akun Firebase: ${auth.currentUser?.isAnonymous ? "anonim (bukan admin)" : auth.currentUser?.email || "-"}`);
+    try { log((await db.get(`roles/${auth.currentUser.uid}`)) === "admin", "Peran admin tercatat di database"); } catch (e) { log(false, `Baca peran gagal: ${e.code || e.message}`); }
+    try { await db.set("_uji/teks", "ok"); log((await db.get("_uji/teks")) === "ok", "Tulis dan baca teks kecil"); } catch (e) { return log(false, `Tulis teks gagal: ${e.code || e.message}`); }
+    try {
+      const big = "data:image/jpeg;base64," + "A".repeat(80000), t0 = Date.now();
+      await db.set("_uji/foto", big);
+      log((await db.get("_uji/foto")) === big, `Tulis dan baca data sebesar foto (80 KB), ${Date.now() - t0} md`);
+    } catch (e) { log(false, `Tulis data besar gagal: ${e.code || e.message}`); }
+    try { await db.remove("_uji"); log(true, "Bersihkan data uji"); } catch (e) { log(false, `Hapus gagal: ${e.code || e.message}`); }
+    for (const [id, p] of [["utama", C.dev.utama], ["dpa0", C.dev.dpa[0]], ["dpa1", C.dev.dpa[1]]]) {
+      try { const d = await db.get(`foto/${id}`); log(true, `Foto ${id}: ${d ? Math.round(d.length / 1024) + " KB tersimpan di Firebase" : p.foto ? "masih di dalam konten (lama)" : "belum ada"}`); }
+      catch (e) { log(false, `Foto ${id}: gagal dibaca (${e.code || e.message})`); }
+    }
   },
   "set-teacher-code": () => openForm({
     title: "Ganti kode guru",
@@ -1122,7 +1229,7 @@ document.addEventListener("click", e => {
   const b = e.target.closest("[data-act]");
   if (!b || !ACTIONS[b.dataset.act]) return;
   // Penjagaan sisi tampilan; keamanan sebenarnya ada di aturan database.
-  const adminOnly = ["edit-beranda", "edit-doc", "edit-materi", "edit-dev", "edit-links", "set-teacher-code", "add-materi", "del-materi", "move-materi", "sync-local"];
+  const adminOnly = ["edit-beranda", "edit-doc", "edit-materi", "edit-dev", "edit-links", "set-teacher-code", "add-materi", "del-materi", "move-materi", "sync-local", "diag", "change-admin-code"];
   if (adminOnly.includes(b.dataset.act) && !isAdmin()) return;
   const teacherActs = ["add-q", "edit-q", "del-q", "export-csv", "reset-result", "del-student", "del-all-students"];
   if ((teacherActs.includes(b.dataset.act) || b.dataset.act.startsWith("abs-")) && !isTeacher()) return;
@@ -1192,7 +1299,9 @@ const CONTENT_ROUTES = ["beranda", "cp", "tp", "atp", "materi", "video", "eksplo
 /* Spanduk peringatan bila Firebase gagal terhubung (aplikasi tetap jalan dalam mode lokal) */
 function explainFirebase(e) {
   const m = String(e?.code || e?.message || e);
-  if (/permission/i.test(m)) return 'Aturan (Rules) Realtime Database belum mengizinkan akses ke node "quanta". Buka Firebase Console → Realtime Database → Rules, tambahkan blok quanta (.read dan .write = true), lalu klik Publish.';
+  if (/operation-not-allowed|admin-restricted/i.test(m)) return 'Metode masuk belum diaktifkan. Buka Firebase Console → Authentication → Sign-in method, lalu aktifkan "Anonymous" dan "Email/Password".';
+  if (/configuration-not-found/i.test(m)) return "Authentication belum diaktifkan. Buka Firebase Console → Authentication → klik Get started.";
+  if (/permission/i.test(m)) return "Rules Realtime Database menolak akses. Pastikan isi aturan-firebase.json sudah dipasang dan di-Publish, dan akun admin/guru sudah dibuat di Authentication.";
   if (/timeout|offline/i.test(m)) return "Database tidak merespons dalam beberapa detik. Pastikan internet aktif, Realtime Database sudah dibuat (bukan hanya Firestore), dan databaseURL benar.";
   return "Pustaka Firebase tidak bisa dimuat. Periksa internet atau coba browser lain. (" + m.slice(0, 120) + ")";
 }
@@ -1216,13 +1325,20 @@ function showBanner(msg) {
     DEMO = true;
     fbProblem = explainFirebase(e);
   }
+  FB_PROBLEM = fbProblem;
   if (fbProblem) showBanner(fbProblem);
+  if (!DEMO && session && session.role !== "siswa" && (!auth.currentUser || auth.currentUser.isAnonymous)) {
+    sessionStorage.removeItem("quanta_session"); sessionStorage.removeItem("quanta_last"); session = null; // login Firebase tidak ada lagi
+  }
+  const ver = $("#ver");
+  if (ver) ver.textContent = ` · v${APP_VERSION} · ${DEMO ? "mode lokal" : "Firebase"}`;
   try { await loadContent(); } catch (e) { console.error(e); }
-  db.listen("content", v => {
+  db.listen("content", async v => {
     const j = JSON.stringify(v || {});
     if (j === lastContentJson) return;
     lastContentJson = j;
     applyContent(v);
+    await loadFotos();
     if (Date.now() - lastOwnWrite < 3000) return; // perubahan dari perangkat ini sendiri
     const key = location.hash.replace(/^#\/?/, "").split("?")[0] || "beranda";
     if (session && !$("#modalRoot").innerHTML && CONTENT_ROUTES.includes(key)) { route(); toast("Konten diperbarui oleh admin."); }

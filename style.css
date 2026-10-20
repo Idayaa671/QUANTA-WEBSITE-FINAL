@@ -396,3 +396,7 @@ input[type=date]{font:inherit;font-size:16px;font-weight:600;color:var(--ink);pa
 /* ===== Status sinkron (v7) ===== */
 .who .chip.sync-on{background:#c9f7e8;border-color:#c9f7e8}
 .who .chip.sync-off{background:#ffd9a8;border-color:#ffd9a8}
+
+/* ===== Diagnosa (v8) ===== */
+.diag{white-space:pre-wrap;word-break:break-word;background:#fff;border:3px solid var(--ink);border-radius:14px;padding:12px;font:600 .9rem/1.5 var(--font-b);margin:12px 0 0}
+.diag:empty{display:none}
