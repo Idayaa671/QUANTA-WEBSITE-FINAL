@@ -15,7 +15,7 @@ if(m&&/Memuat QUANTA/.test(m.textContent))m.innerHTML='<div style="max-width:560
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261020a">
+  <link rel="stylesheet" href="style.css?v=20261024f">
 </head>
 <body>
   <div class="syms" aria-hidden="true"><span>x²</span><span>π</span><span>√</span><span>Δ</span><span>∑</span><span>±</span></div>
@@ -54,6 +54,37 @@ if(m&&/Memuat QUANTA/.test(m.textContent))m.innerHTML='<div style="max-width:560
   <div id="modalRoot"></div>
   <div id="toasts" aria-live="polite"></div>
 
-  <script src="script.js?v=20261020a" defer></script>
+  <script>
+  /* ===== KONFIGURASI FIREBASE QUANTA =====
+     Salin isi firebaseConfig dari Firebase Console (Project settings → Your apps).
+     Cukup ubah blok ini bila pindah ke proyek Firebase lain. */
+  window.QUANTA_FIREBASE = {
+    apiKey: "AIzaSyDBn66TK0XMwxwi7BwVa0BN-Xbc0BKMZvk",
+    authDomain: "website-quanta.firebaseapp.com",
+    databaseURL: "https://website-quanta-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "website-quanta",
+    storageBucket: "website-quanta.firebasestorage.app",
+    messagingSenderId: "287216993859",
+    appId: "1:287216993859:web:ecd1164115a98b41e836f6",
+    measurementId: "G-WVZ9FMZME8"
+  };
+  </script>
+  <script>
+  /* Penjaga versi: bila script.js/style.css yang terbaca bukan versi yang sama dengan index.html,
+     muncul peringatan merah (tanda ada file lama yang belum terganti). */
+  window.QUANTA_EXPECT = "2026.10.24-f";
+  addEventListener("load", function () {
+    setTimeout(function () {
+      if (window.QUANTA_VERSION !== window.QUANTA_EXPECT) {
+        var d = document.createElement("div");
+        d.setAttribute("role", "alert");
+        d.style.cssText = "background:#ffd9d9;border-bottom:3px solid #1B1A4B;padding:12px 16px;font:700 15px sans-serif";
+        d.textContent = "⚠️ File tidak cocok: index.html versi " + window.QUANTA_EXPECT + ", tetapi script.js versi " + (window.QUANTA_VERSION || "lama / tidak terbaca") + ". Ganti SEMUA file (index.html, script.js, style.css) dengan isi paket terbaru, lalu tekan Ctrl+Shift+R.";
+        document.body.prepend(d);
+      }
+    }, 300);
+  });
+  </script>
+  <script src="script.js?v=20261024f" defer></script>
 </body>
 </html>

@@ -4,17 +4,20 @@
    2) Selama masih "ISI_...", aplikasi jalan dalam MODE LOKAL
       (data tersimpan di browser) supaya bisa dicoba dulu.
    ========================================================== */
-const firebaseConfig = {
-  apiKey: "AIzaSyDbdGwDoAzZT_n-ylVJe6hf-vzx2lfSJeE",
-  authDomain: "skripsi-9eecd.firebaseapp.com",
-  databaseURL: "https://skripsi-9eecd-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "skripsi-9eecd",
-  storageBucket: "skripsi-9eecd.firebasestorage.app",
-  messagingSenderId: "847890761289",
-  appId: "1:847890761289:web:16236a80ae42795dde6198"
+// Konfigurasi dibaca dari index.html (window.QUANTA_FIREBASE). Isi di bawah hanya cadangan.
+const firebaseConfig = window.QUANTA_FIREBASE || {
+  apiKey: "AIzaSyDBn66TK0XMwxwi7BwVa0BN-Xbc0BKMZvk",
+  authDomain: "website-quanta.firebaseapp.com",
+  databaseURL: "https://website-quanta-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "website-quanta",
+  storageBucket: "website-quanta.firebasestorage.app",
+  messagingSenderId: "287216993859",
+  appId: "1:287216993859:web:ecd1164115a98b41e836f6",
+  measurementId: "G-WVZ9FMZME8"
 };
 const FB_VER = "10.12.2";
-const APP_VERSION = "2026.10.20-a";
+const APP_VERSION = "2026.10.24-f";
+window.QUANTA_VERSION = APP_VERSION;
 // Akun peran di Firebase Authentication (dibuat sekali di Firebase Console).
 // Kode admin dan kode guru = password akun ini.
 const ADMIN_EMAIL = "admin@quanta.app";
@@ -25,7 +28,7 @@ const ADMIN_HASH = "45c2851252a865f0bfd2858b50663cb64215f3ab7345687e69b7a653209f
 // Kode guru awal = GURU-QUANTA (admin bisa menggantinya di Panel Admin).
 const DEFAULT_TEACHER_HASH = "115bbefe79e909685a6b6f0d4b7436b1e1c888f2de7ef591bb47d8706962d444";
 
-let DEMO = firebaseConfig.apiKey.startsWith("ISI_");
+let DEMO = !firebaseConfig.apiKey || String(firebaseConfig.apiKey).startsWith("ISI_");
 
 // Bila ada galat tak terduga, tampilkan di layar (bukan halaman kosong).
 window.addEventListener("error", e => {
@@ -129,14 +132,8 @@ const db = {
     await fbA.setPersistence(auth, fbA.browserSessionPersistence); // login Firebase hilang saat tab ditutup
     if (auth.authStateReady) await auth.authStateReady();
   },
-  async anon() {
-    if (DEMO) return;
-    await authBusy;
-    if (!auth.currentUser) await fbA.signInAnonymously(auth);
-  },
   async check() {
     if (DEMO) return;
-    await this.anon();
     await fb.get(fb.ref(rdb, "quanta/ping"));
   },
   async signInRole(role, code) {
@@ -147,7 +144,7 @@ const db = {
   },
   signOutAll() {
     if (DEMO) return Promise.resolve();
-    authBusy = (async () => { try { await fbA.signOut(auth); await fbA.signInAnonymously(auth); } catch (e) { console.error(e); } })();
+    authBusy = (async () => { try { await fbA.signOut(auth); } catch (e) { console.error(e); } })();
     return authBusy;
   },
   async changePassword(code) { await fbA.updatePassword(auth.currentUser, code); },
@@ -529,7 +526,8 @@ function showLogin() {
       <button class="role-card" type="button" data-role="guru"><i>🧑‍🏫</i><b>Guru</b><span>Tambah soal dan pantau nilai siswa</span></button>
       <button class="role-card" type="button" data-role="admin"><i>🛠️</i><b>Admin</b><span>Kelola seluruh isi QUANTA</span></button>
     </div>
-    <div class="card login-form" id="loginForm" hidden></div></section>`;
+    <div class="card login-form" id="loginForm" hidden></div>
+    <p class="muted"><a href="#/cek">Firebase belum terhubung? Cek koneksi</a></p></section>`;
   $$(".role-card", v).forEach(b => {
     b.onclick = () => {
       $$(".role-card", v).forEach(x => x.classList.toggle("on", x === b));
@@ -577,7 +575,6 @@ function renderLoginForm(role) {
           if (anggota.length < 2) return toast("Tulis minimal 2 nama anggota kelompok.", "err");
           extra = { mode, anggota };
         }
-        await db.anon();
         const uid = slug(`${mode === "kelompok" ? "kelompok-" : ""}${n}-${k}`);
         const old = await db.get(`users/${uid}`);
         if (!old || mode === "kelompok") await db.set(`users/${uid}`, { nama: n, kelas: k, ...extra, dibuat: old?.dibuat || new Date().toISOString() });
@@ -1182,7 +1179,7 @@ const ACTIONS = {
     log(true, `Alamat halaman: ${location.origin}${location.pathname}`);
     if (DEMO) return log(false, `Mode LOKAL, Firebase tidak terhubung. ${FB_PROBLEM || ""}`);
     log(true, `Database: ${firebaseConfig.databaseURL}`);
-    log(!auth.currentUser?.isAnonymous, `Akun Firebase: ${auth.currentUser?.isAnonymous ? "anonim (bukan admin)" : auth.currentUser?.email || "-"}`);
+    log(!!auth.currentUser, `Akun Firebase: ${auth.currentUser?.email || "tidak login (bukan admin)"}`);
     try { log((await db.get(`roles/${auth.currentUser.uid}`)) === "admin", "Peran admin tercatat di database"); } catch (e) { log(false, `Baca peran gagal: ${e.code || e.message}`); }
     try { await db.set("_uji/teks", "ok"); log((await db.get("_uji/teks")) === "ok", "Tulis dan baca teks kecil"); } catch (e) { return log(false, `Tulis teks gagal: ${e.code || e.message}`); }
     try {
@@ -1266,7 +1263,7 @@ function renderChrome(active) {
     .map(([k, r]) => `<a href="#/${k}" class="${k === active ? "on" : ""}" ${k === active ? 'aria-current="page"' : ""}><span aria-hidden="true">${r.i}</span>${r.t}</a>`).join("");
   const sc = $("#syncChip");
   sc.className = "chip " + (DEMO ? "sync-off" : "sync-on");
-  sc.textContent = DEMO ? "🟠 Lokal" : "🟢 Tersinkron";
+  sc.innerHTML = (DEMO ? "🟠" : "🟢") + `<span class="lbl"> ${DEMO ? "Lokal" : "Tersinkron"}</span>`;
   sc.title = DEMO ? "Firebase belum terhubung: perubahan hanya tersimpan di perangkat ini." : "Terhubung ke Firebase: perubahan terlihat di semua perangkat.";
   const label = { siswa: session.mode === "kelompok" ? "Kelompok" : "Siswa", guru: "Guru", admin: "Admin" }[session.role];
   $("#whoChip").textContent = `${label}: ${session.name}${session.kelas ? " · " + session.kelas : ""}`;
@@ -1274,6 +1271,7 @@ function renderChrome(active) {
 
 let routing = false;
 async function route() {
+  if (/^#\/?cek$/.test(location.hash)) return vCek($("#view"));
   if (!session) return showLogin();
   if (routing) return;
   routing = true;
@@ -1291,6 +1289,67 @@ async function route() {
   } finally { routing = false; }
 }
 
+/* ---------- Halaman cek koneksi Firebase ---------- */
+async function vCek(v) {
+  $("#top").hidden = true;
+  $("#nav").hidden = true;
+  const cfg = firebaseConfig, lines = [];
+  let authM = null, auth2 = null;
+  v.innerHTML = `<section class="card"><h1 style="font-size:2rem">Cek koneksi Firebase</h1>
+    <p class="muted">Halaman ini menguji tiap langkah dan menampilkan kode galat aslinya. Kalau ada ❌, foto layarnya dan kirim ke Claude.</p>
+    <pre id="cekOut" class="diag" style="display:block">Menguji…</pre>
+    <div class="row"><button class="btn sm sun" id="cekCopy" type="button">Salin hasil</button><a class="btn sm ghost" href="#/">Kembali ke QUANTA</a></div>
+    <h2 style="margin-top:22px">Uji login akun</h2>
+    <p class="muted">Isi kodenya, lalu uji, untuk memastikan akun di Authentication → Users sudah dibuat.</p>
+    <div class="row"><input id="cekKode" type="password" placeholder="Kode admin atau guru" style="max-width:260px"><button class="btn sm" id="cekAdmin" type="button">Uji login admin</button><button class="btn sm mint" id="cekGuru" type="button">Uji login guru</button></div>
+    <pre id="cekLogin" class="diag"></pre></section>`;
+  const out = $("#cekOut");
+  const log = (ok, t) => { lines.push(`${ok === true ? "✅" : ok === false ? "❌" : "ℹ️"} ${t}`); out.textContent = lines.join("\n"); };
+  $("#cekCopy").onclick = async () => { try { await navigator.clipboard.writeText(lines.join("\n")); toast("Hasil disalin."); } catch { toast("Tidak bisa menyalin. Foto layarnya saja.", "err"); } };
+  const testLogin = async email => {
+    const box = $("#cekLogin");
+    box.textContent = "Menguji…";
+    try {
+      if (!auth2) throw new Error("langkah pengujian di atas belum berhasil");
+      await authM.signInWithEmailAndPassword(auth2, email, $("#cekKode").value);
+      box.textContent = `✅ Login ${email} berhasil. Akun dan kode benar.`;
+      await authM.signOut(auth2);
+    } catch (e) {
+      const c = String(e.code || e.message);
+      const hint = /invalid-credential|wrong-password/.test(c) ? "Kode salah, atau akun belum dibuat di Authentication → Users."
+        : /user-not-found/.test(c) ? "Akun belum dibuat di Authentication → Users."
+        : /operation-not-allowed/.test(c) ? "Aktifkan Email/Password di Authentication → Sign-in method."
+        : /too-many/.test(c) ? "Terlalu banyak percobaan. Tunggu beberapa menit." : "";
+      box.textContent = `❌ ${email}: ${c}\n${hint}`;
+    }
+  };
+  $("#cekAdmin").onclick = () => testLogin(ADMIN_EMAIL);
+  $("#cekGuru").onclick = () => testLogin(GURU_EMAIL);
+
+  log(null, `Versi: ${APP_VERSION} | Halaman: ${location.origin}${location.pathname}`);
+  const keyOk = !!cfg.apiKey && !String(cfg.apiKey).startsWith("ISI_");
+  log(keyOk, keyOk ? `Config terbaca: apiKey ${String(cfg.apiKey).slice(0, 8)}…, projectId ${cfg.projectId}` : "Config belum terbaca. Isi blok window.QUANTA_FIREBASE di index.html.");
+  log(!!cfg.databaseURL, `databaseURL: ${cfg.databaseURL || "(kosong)"}`);
+  if (!keyOk) return;
+  const mods = {};
+  for (const n of ["app", "auth", "database"]) {
+    try { mods[n] = await withTimeout(import(`https://www.gstatic.com/firebasejs/${FB_VER}/firebase-${n}.js`), 15000, "timeout"); log(true, `Memuat pustaka firebase-${n}`); }
+    catch (e) { return log(false, `Memuat firebase-${n} gagal (${e.message}). Periksa internet, ekstensi pemblokir iklan, atau coba browser lain.`); }
+  }
+  let a;
+  try { a = mods.app.initializeApp(cfg, "cek-" + Date.now()); log(true, "initializeApp"); }
+  catch (e) { return log(false, `initializeApp gagal: ${e.message}. Biasanya ada isi config yang salah ketik.`); }
+  authM = mods.auth;
+  auth2 = authM.getAuth(a);
+  log(null, "Siswa tidak perlu login Firebase. Hanya guru dan admin memakai akun (uji di bawah).");
+  const dbi = mods.database.getDatabase(a), M = mods.database;
+  try { await withTimeout(M.get(M.ref(dbi, "quanta/ping")), 10000, "timeout"); log(true, "Membaca database (quanta/ping)"); }
+  catch (e) { log(false, `Membaca database gagal: ${e.code || e.message}. Timeout berarti databaseURL salah, database belum dibuat, atau internet putus. PERMISSION_DENIED berarti Rules menolak.`); }
+  try { await withTimeout(M.set(M.ref(dbi, "quanta/_cek"), Date.now()), 10000, "timeout"); await M.remove(M.ref(dbi, "quanta/_cek")); log(null, "Menulis sebagai siswa diizinkan, artinya Rules masih terbuka untuk semua orang. Pasang aturan-firebase.json."); }
+  catch (e) { log(null, `Menulis sebagai siswa ditolak (${e.code || e.message}). Ini normal bila Rules sudah dibatasi.`); }
+  log(null, "Selesai. Bila semua ✅ tetapi QUANTA tetap 🟠 Lokal, buka ulang dengan Ctrl+Shift+R.");
+}
+
 /* ---------- Mulai ---------- */
 $("#btnLogout").onclick = logout;
 window.addEventListener("hashchange", route);
@@ -1299,7 +1358,7 @@ const CONTENT_ROUTES = ["beranda", "cp", "tp", "atp", "materi", "video", "eksplo
 /* Spanduk peringatan bila Firebase gagal terhubung (aplikasi tetap jalan dalam mode lokal) */
 function explainFirebase(e) {
   const m = String(e?.code || e?.message || e);
-  if (/operation-not-allowed|admin-restricted/i.test(m)) return 'Metode masuk belum diaktifkan. Buka Firebase Console → Authentication → Sign-in method, lalu aktifkan "Anonymous" dan "Email/Password".';
+  if (/operation-not-allowed|admin-restricted/i.test(m)) return 'Metode masuk Email/Password belum diaktifkan. Buka Firebase Console → Authentication → Sign-in method, lalu aktifkan "Email/Password".';
   if (/configuration-not-found/i.test(m)) return "Authentication belum diaktifkan. Buka Firebase Console → Authentication → klik Get started.";
   if (/permission/i.test(m)) return "Rules Realtime Database menolak akses. Pastikan isi aturan-firebase.json sudah dipasang dan di-Publish, dan akun admin/guru sudah dibuat di Authentication.";
   if (/timeout|offline/i.test(m)) return "Database tidak merespons dalam beberapa detik. Pastikan internet aktif, Realtime Database sudah dibuat (bukan hanya Firestore), dan databaseURL benar.";
@@ -1309,25 +1368,25 @@ function showBanner(msg) {
   const d = document.createElement("div");
   d.className = "banner";
   d.setAttribute("role", "alert");
-  d.innerHTML = `<b>⚠️ Firebase belum terhubung.</b> Untuk sementara QUANTA memakai penyimpanan lokal (data hanya ada di perangkat ini, tidak dibagikan ke guru atau siswa lain). <span></span> <button class="btn sm ghost" type="button">Muat ulang</button>`;
+  d.innerHTML = `<b>⚠️ Firebase belum terhubung.</b> Untuk sementara QUANTA memakai penyimpanan lokal (data hanya ada di perangkat ini, tidak dibagikan ke guru atau siswa lain). <span></span> <a class="btn sm sky" href="#/cek">Cek koneksi</a> <button class="btn sm ghost" type="button">Muat ulang</button>`;
   $("span", d).textContent = msg;
   $("button", d).onclick = () => location.reload();
   document.body.prepend(d);
 }
 
 (async function init() {
-  let fbProblem = null;
+  let fbProblem = DEMO ? "Konfigurasi Firebase belum terbaca. Isi blok window.QUANTA_FIREBASE di index.html (apiKey, databaseURL, dst.) dengan config dari Firebase Console, lalu upload ulang index.html." : null;
   try {
     await withTimeout(db.init(), 12000, "timeout memuat Firebase");
     await withTimeout(db.check(), 9000, "timeout");
   } catch (e) {
     console.error("Firebase:", e);
     DEMO = true;
-    fbProblem = explainFirebase(e);
+    fbProblem = explainFirebase(e) + ` [kode: ${String(e?.code || e?.message || e).slice(0, 80)}]`;
   }
   FB_PROBLEM = fbProblem;
   if (fbProblem) showBanner(fbProblem);
-  if (!DEMO && session && session.role !== "siswa" && (!auth.currentUser || auth.currentUser.isAnonymous)) {
+  if (!DEMO && session && session.role !== "siswa" && !auth.currentUser) {
     sessionStorage.removeItem("quanta_session"); sessionStorage.removeItem("quanta_last"); session = null; // login Firebase tidak ada lagi
   }
   const ver = $("#ver");

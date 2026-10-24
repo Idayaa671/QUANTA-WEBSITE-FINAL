@@ -1,0 +1,46 @@
+QUANTA - PANDUAN PEMASANGAN (versi 2026.10.24-f)
+==================================================
+Proyek Firebase: website-quanta (khusus QUANTA, Realtime Database kawasan asia-southeast1).
+
+A. UPLOAD KE GITHUB (pilih SATU cara)
+-------------------------------------
+Cara 1 (paling aman): unggah hanya file di folder "pilihan-B-satu-file" (index.html).
+         Semuanya sudah menyatu, jadi tidak ada file lain yang bisa tertukar.
+Cara 2: unggah tiga file di folder "pilihan-A-tiga-file" (index.html, style.css, script.js)
+         ke folder yang sama. Nama file harus persis, huruf kecil semua.
+         Hapus dulu file versi lama agar tidak tercampur.
+
+Tunggu 1-2 menit, buka alamat GitHub Pages, lalu tekan Ctrl+Shift+R.
+Di bagian paling bawah halaman harus tertulis: v2026.10.24-f
+Bila muncul peringatan merah "File tidak cocok", berarti masih ada file lama: ganti semuanya.
+
+B. FIREBASE (sekali saja, di proyek website-quanta)
+---------------------------------------------------
+1. Build > Realtime Database: pastikan database sudah dibuat.
+2. Build > Authentication > Get started > Sign-in method > aktifkan "Email/Password".
+   (Login Anonymous TIDAK diperlukan.)
+3. Authentication > Users > Add user, dua akun:
+     admin@quanta.app  -> password = KODE ADMIN (min. 8 karakter, buat yang kuat)
+     guru@quanta.app   -> password = KODE GURU
+4. Realtime Database > Rules > tempel isi file aturan-firebase.json > Publish.
+5. Buka QUANTA. Penanda di pojok atas harus "Tersinkron" (hijau).
+   Bila "Lokal" (oranye): klik tombol "Cek koneksi" di spanduk kuning, lalu baca hasilnya.
+
+C. HAK AKSES
+------------
+Siswa  : memakai aplikasi, mengerjakan tes, melihat nilai sendiri. Tanpa akun Firebase.
+Guru   : mengedit dan menambah soal (Pre Test, Post Test, Remedia, Pengayaan, soal lain),
+         mengisi absensi, melihat nilai semua siswa, reset nilai dan hapus data siswa.
+Admin  : semua hal di atas + mengubah konten, materi, foto, tautan, dan kode admin.
+
+D. MENGGANTI KODE
+-----------------
+Kode admin : Panel Admin > tab Kode > Ganti kode admin.
+Kode guru  : Firebase Console > Authentication > Users > hapus akun guru@quanta.app,
+             lalu Add user lagi dengan password baru.
+
+E. CATATAN KEAMANAN
+-------------------
+Penilaian dihitung di browser, jadi siswa yang paham teknis masih bisa mengirim nilai palsu
+untuk dirinya sendiri (Rules hanya memastikan angka 0-100). Untuk ujian penting, nilai
+sebaiknya diperiksa ulang oleh guru.

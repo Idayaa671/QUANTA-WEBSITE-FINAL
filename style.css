@@ -400,3 +400,8 @@ input[type=date]{font:inherit;font-size:16px;font-weight:600;color:var(--ink);pa
 /* ===== Diagnosa (v8) ===== */
 .diag{white-space:pre-wrap;word-break:break-word;background:#fff;border:3px solid var(--ink);border-radius:14px;padding:12px;font:600 .9rem/1.5 var(--font-b);margin:12px 0 0}
 .diag:empty{display:none}
+
+/* ===== Header sempit (v9) ===== */
+.top{flex-wrap:wrap}
+.who{flex-wrap:nowrap}
+@media(max-width:420px){#syncChip .lbl{display:none}.who{gap:6px}}

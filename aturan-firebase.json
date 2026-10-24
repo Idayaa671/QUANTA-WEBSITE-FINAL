@@ -29,7 +29,7 @@
         ".write": "auth != null && root.child('quanta/roles').child(auth.uid).val() === 'admin'"
       },
       "questions": {
-        ".read": "auth != null",
+        ".read": true,
         ".write": "auth != null && (root.child('quanta/roles').child(auth.uid).val() === 'admin' || root.child('quanta/roles').child(auth.uid).val() === 'guru')"
       },
       "absensi": {
@@ -40,18 +40,18 @@
         ".read": "auth != null && (root.child('quanta/roles').child(auth.uid).val() === 'admin' || root.child('quanta/roles').child(auth.uid).val() === 'guru')",
         ".write": "auth != null && (root.child('quanta/roles').child(auth.uid).val() === 'admin' || root.child('quanta/roles').child(auth.uid).val() === 'guru')",
         "$sid": {
-          ".read": "auth != null",
-          ".write": "auth != null",
-          ".validate": "newData.hasChildren(['nama', 'kelas'])"
+          ".read": true,
+          ".write": "newData.exists()",
+          ".validate": "newData.hasChildren(['nama', 'kelas']) && newData.child('nama').isString() && newData.child('nama').val().length <= 100 && newData.child('kelas').isString() && newData.child('kelas').val().length <= 40"
         }
       },
       "results": {
         ".read": "auth != null && (root.child('quanta/roles').child(auth.uid).val() === 'admin' || root.child('quanta/roles').child(auth.uid).val() === 'guru')",
         ".write": "auth != null && (root.child('quanta/roles').child(auth.uid).val() === 'admin' || root.child('quanta/roles').child(auth.uid).val() === 'guru')",
         "$sid": {
-          ".read": "auth != null",
-          ".write": "auth != null",
+          ".read": true,
           "$kind": {
+            ".write": "newData.exists()",
             ".validate": "newData.hasChildren(['skor']) && newData.child('skor').isNumber() && newData.child('skor').val() >= 0 && newData.child('skor').val() <= 100"
           }
         }
