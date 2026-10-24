@@ -405,3 +405,20 @@ input[type=date]{font:inherit;font-size:16px;font-weight:600;color:var(--ink);pa
 .top{flex-wrap:wrap}
 .who{flex-wrap:nowrap}
 @media(max-width:420px){#syncChip .lbl{display:none}.who{gap:6px}}
+
+/* ===== Rumus matematika (v10) ===== */
+mjx-container{max-width:100%}
+mjx-container[display="true"]{overflow-x:auto;overflow-y:hidden;padding:2px 0;margin:.6em 0}
+.opt mjx-container,.qtext mjx-container{vertical-align:middle}
+.mathbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:6px;font-weight:600}
+.mathbar small{flex:1 1 200px}
+.mathprev{margin-top:6px;padding:10px 14px;border:2.5px dashed var(--ink);border-radius:14px;background:#fff;font-weight:600;overflow-x:auto}
+.mathprev p{margin:.2em 0}
+.mathprev[hidden]{display:none}
+.math-overlay{z-index:9000}
+.math-modal{max-width:640px}
+.ml-host{margin:0 0 14px}
+math-field{display:block;width:100%;font-size:1.6rem;padding:10px 12px;border:3px solid var(--ink);border-radius:14px;background:#fff;--keyboard-zindex:10000}
+.check{display:flex;gap:8px;align-items:center;font-weight:700;margin:0 0 14px}
+.check input{width:20px;height:20px}
+:root{--keyboard-zindex:10000}

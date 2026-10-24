@@ -1,4 +1,4 @@
-QUANTA - PANDUAN PEMASANGAN (versi 2026.10.24-f)
+QUANTA - PANDUAN PEMASANGAN (versi 2026.10.25-a)
 ==================================================
 Proyek Firebase: website-quanta (khusus QUANTA, Realtime Database kawasan asia-southeast1).
 
@@ -11,7 +11,7 @@ Cara 2: unggah tiga file di folder "pilihan-A-tiga-file" (index.html, style.css,
          Hapus dulu file versi lama agar tidak tercampur.
 
 Tunggu 1-2 menit, buka alamat GitHub Pages, lalu tekan Ctrl+Shift+R.
-Di bagian paling bawah halaman harus tertulis: v2026.10.24-f
+Di bagian paling bawah halaman harus tertulis: v2026.10.25-a
 Bila muncul peringatan merah "File tidak cocok", berarti masih ada file lama: ganti semuanya.
 
 B. FIREBASE (sekali saja, di proyek website-quanta)
@@ -44,3 +44,24 @@ E. CATATAN KEAMANAN
 Penilaian dihitung di browser, jadi siswa yang paham teknis masih bisa mengirim nilai palsu
 untuk dirinya sendiri (Rules hanya memastikan angka 0-100). Untuk ujian penting, nilai
 sebaiknya diperiksa ulang oleh guru.
+
+F. FOTO PENGEMBANG / DPA (diperbaiki di v2026.10.25-a)
+------------------------------------------------------
+Foto kini otomatis dikecilkan (maks. 360 px, sekitar 40 KB) dan disimpan LANGSUNG di dalam
+konten Firebase bersama nama dan deskripsi. Jadi satu kali simpan sudah tersinkron ke semua
+perangkat, tanpa pengambilan kedua yang bisa gagal.
+Foto lama: buka Pengembang > Edit > Simpan sekali lagi (foto tidak perlu dipilih ulang)
+agar dipindahkan ke format baru. Data foto lama di node "foto" dihapus otomatis.
+Pengecekan: Panel Admin > Uji koneksi dan foto. Tiap foto harus bertulis "tersimpan di konten".
+
+G. RUMUS MATEMATIKA (baru di v2026.10.25-a)
+-------------------------------------------
+Rumus ditulis dengan tanda dolar: $x^2 - 4 = 0$ tampil sebaris, $$\frac{-b \pm \sqrt{b^2-4ac}}{2a}$$
+tampil di baris sendiri. Berlaku di soal, pilihan jawaban, pembahasan, materi, CP/TP/ATP, dll.
+Cara mengedit tanpa hafal kode:
+1. Buka form edit (soal, materi, dsb.), klik tombol "∑ Rumus" di bawah kolom teks.
+2. Ketik rumus di editor visual seperti Equation Word (ketik / untuk pecahan, ^ untuk pangkat,
+   sqrt untuk akar; di HP pakai tombol papan ketik rumus), lalu klik "Sisipkan".
+3. Untuk mengubah rumus yang sudah ada: letakkan kursor di dalam $...$ lalu klik "∑ Rumus" lagi.
+Pratinjau rumus muncul di bawah kolom. Untuk tanda dolar biasa (harga), tulis \$ .
+Butuh internet saat memuat MathJax dan editor rumus (dari cdn.jsdelivr.net).

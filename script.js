@@ -16,7 +16,7 @@ const firebaseConfig = window.QUANTA_FIREBASE || {
   measurementId: "G-WVZ9FMZME8"
 };
 const FB_VER = "10.12.2";
-const APP_VERSION = "2026.10.24-f";
+const APP_VERSION = "2026.10.25-a";
 window.QUANTA_VERSION = APP_VERSION;
 // Akun peran di Firebase Authentication (dibuat sekali di Firebase Console).
 // Kode admin dan kode guru = password akun ini.
@@ -324,18 +324,29 @@ async function loadContent() {
 async function refresh() { await loadContent(); await route(); }
 
 /* ---------- Modal formulir ---------- */
-function resizeImage(file, max = 420) {
+function resizeImage(file, max = 360) {
+  // Foto disimpan di dalam konten, jadi dibuat kecil: sisi terpanjang <= 360 px, ukuran <= ~40 KB.
   return new Promise((res, rej) => {
     const fr = new FileReader();
     fr.onload = () => {
       const im = new Image();
       im.onload = () => {
-        const k = Math.min(1, max / Math.max(im.width, im.height));
-        const c = document.createElement("canvas");
-        c.width = Math.round(im.width * k);
-        c.height = Math.round(im.height * k);
-        c.getContext("2d").drawImage(im, 0, 0, c.width, c.height);
-        res(c.toDataURL("image/jpeg", 0.8));
+        let side = max, out = "";
+        for (let round = 0; round < 4; round++) {
+          const k = Math.min(1, side / Math.max(im.width, im.height));
+          const c = document.createElement("canvas");
+          c.width = Math.max(1, Math.round(im.width * k));
+          c.height = Math.max(1, Math.round(im.height * k));
+          const g = c.getContext("2d");
+          g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); // PNG transparan -> latar putih
+          g.drawImage(im, 0, 0, c.width, c.height);
+          for (const q of [0.82, 0.72, 0.62, 0.5]) {
+            out = c.toDataURL("image/jpeg", q);
+            if (out.length <= 55000) return res(out); // ~40 KB biner
+          }
+          side = Math.round(side * 0.8);
+        }
+        res(out);
       };
       im.onerror = rej;
       im.src = fr.result;
@@ -345,6 +356,96 @@ function resizeImage(file, max = 420) {
   });
 }
 
+/* ---------- Rumus matematika (MathJax untuk tampil, MathLive untuk mengedit) ---------- */
+const MATH_RE = /\$|\\\(|\\\[/;
+let mjTimer = 0;
+function typesetSoon() {
+  clearTimeout(mjTimer);
+  mjTimer = setTimeout(async () => {
+    if (!window.MathJax || !MathJax.typesetPromise) return; // MathJax belum selesai dimuat
+    const els = ["#view", "#modalRoot"].map(x => $(x)).filter(e => e && MATH_RE.test(e.textContent));
+    if (!els.length) return;
+    try { await MathJax.typesetPromise(els); } catch (e) { console.error("MathJax", e); }
+  }, 120);
+}
+window.quantaTypeset = typesetSoon;
+new MutationObserver(typesetSoon).observe(document.body, { childList: true, subtree: true, characterData: true });
+
+const MATHLIVE_URL = "https://cdn.jsdelivr.net/npm/mathlive@0.110.0/";
+let mlPromise = null;
+function loadMathLive() {
+  if (!mlPromise) {
+    mlPromise = new Promise((res, rej) => {
+      if (customElements.get("math-field")) return res();
+      const sc = document.createElement("script");
+      sc.src = MATHLIVE_URL + "mathlive.min.js";
+      sc.onload = () => {
+        try { if (window.MathfieldElement) { MathfieldElement.fontsDirectory = MATHLIVE_URL + "fonts"; MathfieldElement.soundsDirectory = null; } } catch { /* abaikan */ }
+        customElements.whenDefined("math-field").then(res, rej);
+      };
+      sc.onerror = () => { mlPromise = null; rej(new Error("MathLive tidak termuat")); };
+      document.head.append(sc);
+    });
+  }
+  return withTimeout(mlPromise, 15000, "timeout MathLive");
+}
+
+/* Dialog editor rumus. initial: LaTeX awal ("" bila baru). onOk(latex, display). */
+async function openMathEditor(initial, display, onOk) {
+  const box = document.createElement("div");
+  box.className = "overlay math-overlay";
+  box.innerHTML = `<div class="modal math-modal" role="dialog" aria-modal="true" aria-label="Editor rumus">
+    <h2>∑ Editor rumus</h2>
+    <p class="muted" id="mlHint">Memuat editor rumus…</p>
+    <div id="mlHost" class="ml-host"></div>
+    <label class="field"><span>Kode LaTeX (boleh diedit langsung)</span><textarea id="mlTex" rows="2" spellcheck="false"></textarea></label>
+    <label class="check"><input type="checkbox" id="mlDisp" ${display ? "checked" : ""}> Tampilkan di baris sendiri (rumus besar, di tengah)</label>
+    <div class="row end"><button class="btn ghost" type="button" data-x>Batal</button><button class="btn" type="button" data-ok>Sisipkan</button></div>
+  </div>`;
+  document.body.append(box);
+  const tex = $("#mlTex", box), hint = $("#mlHint", box), host = $("#mlHost", box);
+  tex.value = initial || "";
+  const close = () => { box.remove(); try { window.mathVirtualKeyboard?.hide(); } catch { /* abaikan */ } };
+  box.addEventListener("keydown", e => { if (e.key === "Escape") { e.stopPropagation(); close(); } });
+  box.onclick = e => { if (e.target === box) close(); };
+  $("[data-x]", box).onclick = close;
+  $("[data-ok]", box).onclick = () => {
+    const latex = tex.value.trim();
+    if (!latex) { toast("Rumus masih kosong.", "err"); return; }
+    onOk(latex, $("#mlDisp", box).checked);
+    close();
+  };
+  try {
+    await loadMathLive();
+    const mf = document.createElement("math-field");
+    mf.setAttribute("aria-label", "Kolom rumus");
+    mf.value = initial || "";
+    host.append(mf);
+    hint.textContent = "Ketik rumus seperti di Equation Word. Ketik / untuk pecahan, ^ untuk pangkat, sqrt untuk akar. Di HP, tombol ⌨️ membuka papan ketik rumus.";
+    mf.addEventListener("input", () => { tex.value = mf.value; });
+    tex.addEventListener("input", () => { mf.value = tex.value; });
+    setTimeout(() => mf.focus(), 50);
+  } catch (e) {
+    console.error(e);
+    hint.textContent = "Editor visual tidak bisa dimuat (periksa internet). Tulis kode LaTeX di bawah; pratinjau muncul otomatis.";
+    host.innerHTML = '<div class="mathprev" id="mlPrev"></div>';
+    const upd = () => { const p = $("#mlPrev", box); p.textContent = tex.value.trim() ? "$" + tex.value + "$" : ""; typesetSoon(); };
+    tex.addEventListener("input", upd); upd();
+    tex.focus();
+  }
+}
+
+/* Cari rumus $...$ atau $$...$$ yang mengapit posisi kursor. */
+function mathAt(text, pos) {
+  const re = /\$\$([^$]+?)\$\$|\$([^$\n]+?)\$/g;
+  let m;
+  while ((m = re.exec(text))) {
+    if (pos >= m.index && pos <= m.index + m[0].length) return { start: m.index, end: m.index + m[0].length, latex: (m[1] ?? m[2]).trim(), display: m[1] !== undefined };
+  }
+  return null;
+}
+
+const hasMath = f => f.math === true || (f.math !== false && f.type === "textarea");
 function fieldHTML(f) {
   const id = `f_${f.key}`, v = f.value ?? "";
   let input;
@@ -352,7 +453,8 @@ function fieldHTML(f) {
   else if (f.type === "select") input = `<select id="${id}">${f.options.map(([val, lab]) => `<option value="${esc(val)}" ${String(val) === String(v) ? "selected" : ""}>${esc(lab)}</option>`).join("")}</select>`;
   else if (f.type === "image") input = `<div class="imgpick"><img id="${id}_p" alt="Pratinjau foto" ${v ? `src="${esc(v)}"` : "hidden"}><input type="file" accept="image/*" id="${id}"></div>`;
   else input = `<input id="${id}" type="${f.type || "text"}" value="${esc(v)}" ${f.placeholder ? `placeholder="${esc(f.placeholder)}"` : ""}>`;
-  return `<label class="field"><span>${esc(f.label)}</span>${input}${f.hint ? `<small>${esc(f.hint)}</small>` : ""}</label>`;
+  const mathUI = hasMath(f) ? `<span class="mathbar"><button class="btn sm sky" type="button" data-math="${f.key}">∑ Rumus</button><small>Klik untuk menyisipkan rumus. Letakkan kursor di dalam rumus $...$ lalu klik lagi untuk mengubahnya.</small></span><div class="mathprev" id="${id}_v" hidden></div>` : "";
+  return `<div class="field"><label for="${id}">${esc(f.label)}</label>${input}${mathUI}${f.hint ? `<small>${esc(f.hint)}</small>` : ""}</div>`;
 }
 
 function closeModal() { $("#modalRoot").innerHTML = ""; }
@@ -386,6 +488,32 @@ function openForm({ title, intro = "", fields, onSave, saveLabel = "Simpan" }) {
       await job;
       pending.delete(job);
       if (!pending.size) { btn.disabled = false; btn.textContent = saveLabel; }
+    };
+  });
+  fields.filter(hasMath).forEach(f => {
+    const el = $(`#f_${f.key}`, root), prev = $(`#f_${f.key}_v`, root), btn = $(`[data-math="${f.key}"]`, root);
+    if (!el || !prev || !btn) return;
+    let t = 0;
+    const upd = () => {
+      const val = el.value;
+      if (!MATH_RE.test(val)) { prev.hidden = true; prev.innerHTML = ""; return; }
+      prev.hidden = false;
+      prev.innerHTML = el.tagName === "TEXTAREA" ? rich(val) : `<p>${esc(val)}</p>`;
+      typesetSoon();
+    };
+    el.addEventListener("input", () => { clearTimeout(t); t = setTimeout(upd, 250); });
+    upd();
+    btn.onclick = () => {
+      const a = el.selectionStart ?? el.value.length, b = el.selectionEnd ?? a;
+      const hit = mathAt(el.value, a);
+      openMathEditor(hit ? hit.latex : "", hit ? hit.display : false, (latex, display) => {
+        const wrap = display ? "$$" : "$", piece = wrap + latex + wrap;
+        const from = hit ? hit.start : a, to = hit ? hit.end : b;
+        el.value = el.value.slice(0, from) + piece + el.value.slice(to);
+        const caret = from + piece.length;
+        el.focus(); el.setSelectionRange(caret, caret);
+        upd();
+      });
     };
   });
   $("[data-x]", root).onclick = closeModal;
@@ -856,7 +984,7 @@ function questionForm(kind, q) {
     fields: [
       { key: "tingkat", label: "Tingkat berpikir", type: "select", value: q?.tingkat || "Menerapkan", options: ["Mengingat", "Memahami", "Menerapkan", "Menganalisis", "Mengevaluasi"].map(x => [x, x]) },
       { key: "teks", label: "Pertanyaan", type: "textarea", rows: 3, value: q?.teks },
-      ...["A", "B", "C", "D"].map((L, k) => ({ key: `o${k}`, label: `Pilihan ${L}`, value: q?.opsi?.[k] })),
+      ...["A", "B", "C", "D"].map((L, k) => ({ key: `o${k}`, label: `Pilihan ${L}`, value: q?.opsi?.[k], math: true })),
       { key: "kunci", label: "Jawaban benar", type: "select", value: q?.kunci ?? 0, options: [[0, "A"], [1, "B"], [2, "C"], [3, "D"]] },
       { key: "bahas", label: "Pembahasan (muncul setelah tes selesai)", type: "textarea", rows: 3, value: q?.bahas }
     ],
@@ -1042,17 +1170,15 @@ const ACTIONS = {
       fields: [{ key: "nama", label: "Nama", value: p.nama }, { key: "peran", label: "Peran", value: p.peran }, { key: "foto", label: "Foto", type: "image", value: p.foto }, { key: "deskripsi", label: "Deskripsi", type: "textarea", rows: 5, value: p.deskripsi }],
       onSave: async v => {
         const path = t === "utama" ? "content/dev/utama" : `content/dev/dpa/${t}`;
-        const meta = { nama: v.nama, peran: v.peran, deskripsi: v.deskripsi };
-        const changed = v.foto !== (p.foto || "") || (v.foto && !p.fotoV);
-        if (changed && v.foto) {
-          await db.set(`foto/${id}`, v.foto);
-          if ((await db.get(`foto/${id}`)) !== v.foto) throw new Error("foto tidak tersimpan");
-          meta.fotoV = Date.now();
-        } else if (changed) {
-          await db.remove(`foto/${id}`);
-        } else if (p.fotoV) meta.fotoV = p.fotoV;
-        await db.set(path, meta);
-        toast("Tersimpan.");
+        // Foto disimpan LANGSUNG di dalam konten (satu kali tulis), jadi ikut tersinkron ke semua perangkat.
+        const meta = { nama: v.nama, peran: v.peran, deskripsi: v.deskripsi, foto: v.foto || "" };
+        await withTimeout(db.set(path, meta), 25000, "timeout menyimpan (koneksi lambat atau terputus)");
+        if (v.foto) {
+          const back = await db.get(path);
+          if (!back || back.foto !== v.foto) throw new Error("foto tidak tersimpan");
+        }
+        try { await db.remove(`foto/${id}`); } catch { /* data foto lama, boleh dilewati */ }
+        toast("Tersimpan dan tersinkron.");
         await refresh();
       }
     });
@@ -1188,9 +1314,11 @@ const ACTIONS = {
       log((await db.get("_uji/foto")) === big, `Tulis dan baca data sebesar foto (80 KB), ${Date.now() - t0} md`);
     } catch (e) { log(false, `Tulis data besar gagal: ${e.code || e.message}`); }
     try { await db.remove("_uji"); log(true, "Bersihkan data uji"); } catch (e) { log(false, `Hapus gagal: ${e.code || e.message}`); }
-    for (const [id, p] of [["utama", C.dev.utama], ["dpa0", C.dev.dpa[0]], ["dpa1", C.dev.dpa[1]]]) {
-      try { const d = await db.get(`foto/${id}`); log(true, `Foto ${id}: ${d ? Math.round(d.length / 1024) + " KB tersimpan di Firebase" : p.foto ? "masih di dalam konten (lama)" : "belum ada"}`); }
-      catch (e) { log(false, `Foto ${id}: gagal dibaca (${e.code || e.message})`); }
+    for (const [id, p, path] of [["utama", C.dev.utama, "content/dev/utama"], ["dpa0", C.dev.dpa[0], "content/dev/dpa/0"], ["dpa1", C.dev.dpa[1], "content/dev/dpa/1"]]) {
+      try {
+        const d = await db.get(path);
+        log(true, `Foto ${id}: ${d?.foto ? Math.round(d.foto.length / 1024) + " KB tersimpan di konten (tersinkron)" : p.foto ? "ada, tetapi masih di data lama (simpan ulang lewat Edit agar tersinkron)" : "belum ada"}`);
+      } catch (e) { log(false, `Foto ${id}: gagal dibaca (${e.code || e.message})`); }
     }
   },
   "set-teacher-code": () => openForm({
@@ -1407,3 +1535,4 @@ function showBanner(msg) {
   if (DEMO) console.info("QUANTA berjalan dalam MODE LOKAL.");
   route();
 })();
+typesetSoon();
