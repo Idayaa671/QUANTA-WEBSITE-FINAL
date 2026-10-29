@@ -16,7 +16,7 @@ const firebaseConfig = window.QUANTA_FIREBASE || {
   measurementId: "G-WVZ9FMZME8"
 };
 const FB_VER = "10.12.2";
-const APP_VERSION = "2026.10.25-a";
+const APP_VERSION = "2026.10.26-a";
 window.QUANTA_VERSION = APP_VERSION;
 // Akun peran di Firebase Authentication (dibuat sekali di Firebase Console).
 // Kode admin dan kode guru = password akun ini.
@@ -320,6 +320,12 @@ async function loadContent() {
   lastContentJson = JSON.stringify(raw);
   applyContent(raw);
   await loadFotos();
+}
+async function publicRead(path) {
+  // Baca langsung dari server lewat REST tanpa login: persis yang dilihat perangkat lain.
+  const r = await withTimeout(fetch(`${firebaseConfig.databaseURL}/quanta/${path}.json?cb=${Date.now()}`, { cache: "no-store" }), 15000, "timeout");
+  if (!r.ok) { const e = new Error(`HTTP ${r.status}`); e.code = r.status; throw e; }
+  return r.json();
 }
 async function refresh() { await loadContent(); await route(); }
 
@@ -842,6 +848,47 @@ async function vDev(v) {
 }
 
 /* ---------- Tes ---------- */
+/* ---------- Tingkat berpikir C1–C6 (bisa diatur guru/admin) ---------- */
+const DEFAULT_LEVELS = [["C1", "Mengingat"], ["C2", "Memahami"], ["C3", "Menerapkan"], ["C4", "Menganalisis"], ["C5", "Mengevaluasi"], ["C6", "Mencipta"]].map(([kode, nama]) => ({ kode, nama }));
+const LEGACY_LEVEL = { Mengingat: "C1", Memahami: "C2", Menerapkan: "C3", Menganalisis: "C4", Mengevaluasi: "C5", Mencipta: "C6" };
+let LEVELS = DEFAULT_LEVELS;
+async function loadLevels() {
+  try {
+    const o = await db.get("questions/_tingkat");
+    const arr = o ? (Array.isArray(o) ? o : Object.values(o)).filter(x => x && x.kode && x.nama) : [];
+    LEVELS = arr.length ? arr : DEFAULT_LEVELS;
+  } catch { LEVELS = DEFAULT_LEVELS; }
+  return LEVELS;
+}
+function levelOf(t) {
+  if (!t) return null;
+  return LEVELS.find(l => l.kode === t) || LEVELS.find(l => l.kode === LEGACY_LEVEL[t]) || LEVELS.find(l => l.nama === t) || null;
+}
+const levelCode = t => levelOf(t)?.kode || t || "";
+const levelLabel = t => { const l = levelOf(t); return l ? `${l.kode} ${l.nama}` : (t || ""); };
+
+/* ---------- Peserta pada mode kelompok: tiap anggota mengerjakan tes atas namanya sendiri ---------- */
+const isKel = () => !!session && session.role === "siswa" && session.mode === "kelompok";
+const rid = () => (isKel() ? slug(`${session.peserta}-${session.kelas}`) : session.uid);
+const whoName = () => (isKel() ? session.peserta : session.name);
+function saveSession() { try { sessionStorage.setItem("quanta_session", JSON.stringify(session)); } catch { /* abaikan */ } }
+function renderPesertaPicker(v, title, onPick) {
+  v.innerHTML = title + `<section class="card" id="pesertaBox">
+    <h2>Siapa yang mengerjakan?</h2>
+    <p>Kamu masuk sebagai <b>${esc(session.name)}</b>. Pilih atau tulis namamu sendiri supaya nilainya tercatat atas namamu, bukan nama kelompok.</p>
+    <div class="row" style="margin-bottom:12px">${(session.anggota || []).map(n => `<button class="btn sm sky" type="button" data-pn="${esc(n)}">${esc(n)}</button>`).join("")}</div>
+    <label class="field"><span>Atau tulis namamu</span><input id="pnInput" type="text" autocomplete="off" placeholder="Nama lengkap"></label>
+    <button class="btn" type="button" id="pnGo">Lanjut</button></section>`;
+  const pick = n => {
+    n = String(n || "").trim().slice(0, 100);
+    if (!n) return toast("Isi atau pilih namamu dulu ya.", "err");
+    session.peserta = n; saveSession(); onPick();
+  };
+  $$("[data-pn]", v).forEach(b => { b.onclick = () => pick(b.dataset.pn); });
+  $("#pnGo", v).onclick = () => pick($("#pnInput", v).value);
+  $("#pnInput", v).onkeydown = e => { if (e.key === "Enter") pick(e.target.value); };
+}
+
 const KIND_LABEL = { pre: "Pre Test", post: "Post Test", remedia: "Remedia", pengayaan: "Pengayaan", latihan: "Soal Lain" };
 const META = {
   pre: ["🧭", "Pre Test", "Asesmen Diagnostik"], post: ["🏆", "Post Test", "Asesmen Sumatif"],
@@ -864,26 +911,31 @@ async function ensureSeed(kind) {
 }
 
 function vTest(kind) {
-  return async v => {
+  const self = async v => {
     const pre = kind === "pre", student = session.role === "siswa";
+    if (isKel() && !session.peserta) { renderPesertaPicker(v, pageHead(...META[kind]), () => self(v)); return; }
+    await loadLevels();
     const qs = await getQuestions(kind);
-    const prev = student ? await db.get(`results/${session.uid}/${kind}`) : null;
-    const preDone = (!student || kind !== "post") ? true : !!(await db.get(`results/${session.uid}/pre`));
+    const prev = student ? await db.get(`results/${rid()}/${kind}`) : null;
+    const preDone = (!student || kind !== "post") ? true : !!(await db.get(`results/${rid()}/pre`));
     const locked = student && pre && prev;
-    const postRes = student && (kind === "remedia" || kind === "pengayaan") ? await db.get(`results/${session.uid}/post`) : null;
+    const postRes = student && (kind === "remedia" || kind === "pengayaan") ? await db.get(`results/${rid()}/post`) : null;
     const saran = !student || !(kind === "remedia" || kind === "pengayaan") ? "" : !postRes ? "Disarankan mengerjakan Post Test lebih dulu."
       : kind === "remedia" ? (postRes.skor >= 75 ? "Nilai Post Test-mu sudah baik, remedia ini bersifat opsional." : "Nilai Post Test-mu masih di bawah 75, remedia ini sangat disarankan.")
       : (postRes.skor >= 75 ? "Nilai Post Test-mu sudah baik, pengayaan ini cocok untukmu." : "Sebaiknya selesaikan remedia dulu sebelum pengayaan.");
     v.innerHTML = pageHead(...META[kind]) + `<section class="card" id="testBox">
       <p>${INTRO[kind] ? INTRO[kind] : pre ? "Ini bukan ujian untuk menghakimi. Pre test membantu kita tahu dari mana kamu mulai. Jawab sejujurnya — menebak dengan berani pun tidak apa-apa." : "Saatnya membuktikan hasil penemuanmu. Baca pelan-pelan, dan tanyakan \"kenapa jawabannya begitu?\" sebelum memilih."}</p>
-      ${!qs.length ? '<p class="muted">Belum ada soal di bagian ini. Guru atau admin dapat menambahkannya.</p>' : ""}<p><span class="chip">${qs.length} soal</span> ${!student ? '<span class="chip">Mode pratinjau: nilai tidak disimpan</span>' : ""}</p>
+      ${!qs.length ? '<p class="muted">Belum ada soal di bagian ini. Guru atau admin dapat menambahkannya.</p>' : ""}${isKel() ? `<p>Mengerjakan sebagai: <b>${esc(session.peserta)}</b> <button class="btn sm ghost" type="button" id="pnChange">Ganti nama</button></p>` : ""}<p><span class="chip">${qs.length} soal</span> ${!student ? '<span class="chip">Mode pratinjau: nilai tidak disimpan</span>' : ""}</p>
       ${prev ? `<p>Nilai terakhirmu: <b>${prev.skor}</b> (percobaan ke-${prev.percobaan}).</p>` : ""}
       ${!preDone ? `<p class="think"><span>Saran</span>Kamu belum mengerjakan Pre Test. Disarankan mengerjakannya lebih dulu agar kemajuanmu terlihat.</p>` : ""}
       ${saran ? `<p class="think"><span>Saran</span>${saran}</p>` : ""}
       ${locked ? `<p class="muted">Pre test hanya bisa dikerjakan sekali. Minta guru untuk mengulang bila perlu.</p>` : ""}
       <button class="btn" id="startTest" type="button" ${locked || !qs.length ? "disabled" : ""}>${prev && !locked ? "Kerjakan lagi" : "Mulai"}</button></section>`;
     $("#startTest").onclick = () => runTest(qs, kind, student);
+    if ($("#pnChange")) $("#pnChange").onclick = () => { session.peserta = null; saveSession(); self(v); };
   };
+  // Setiap kali halaman tes dibuka, anggota kelompok wajib memilih/mengetik namanya lagi.
+  return async v => { if (isKel()) { session.peserta = null; saveSession(); } return self(v); };
 }
 
 function runTest(qs, kind, student) {
@@ -893,7 +945,7 @@ function runTest(qs, kind, student) {
   const draw = () => {
     const q = qs[i];
     box.innerHTML = `<div class="progress"><i style="width:${(i / qs.length) * 100}%"></i></div>
-      <p class="muted">Soal ${i + 1} dari ${qs.length} ${q.tingkat ? `<span class="chip">${esc(q.tingkat)}</span>` : ""}</p>
+      <p class="muted">Soal ${i + 1} dari ${qs.length} ${q.tingkat ? `<span class="chip">${esc(levelLabel(q.tingkat))}</span>` : ""}</p>
       <h2 class="qtext">${esc(q.teks)}</h2>
       <div class="opts">${q.opsi.map((o, k) => `<button class="opt ${ans[i] === k ? "sel" : ""}" type="button" data-k="${k}"><b>${"ABCD"[k]}</b><span>${esc(o)}</span></button>`).join("")}</div>
       <div class="row between"><button class="btn ghost" type="button" data-prev ${i ? "" : "disabled"}>Sebelumnya</button>
@@ -905,15 +957,22 @@ function runTest(qs, kind, student) {
   const finish = async () => {
     const benar = qs.filter((q, k) => ans[k] === Number(q.kunci)).length;
     const skor = Math.round((benar / qs.length) * 100);
+    const atasNama = student ? whoName() : "";
     if (student) {
       try {
-        if (!(await db.get(`users/${session.uid}`))) await db.set(`users/${session.uid}`, { nama: session.name, kelas: session.kelas, mode: session.mode || "individu", ...(session.anggota ? { anggota: session.anggota } : {}), dibuat: new Date().toISOString() });
-        const old = await db.get(`results/${session.uid}/${kind}`);
-        await db.set(`results/${session.uid}/${kind}`, { nama: session.name, kelas: session.kelas, skor, benar, total: qs.length, tanggal: new Date().toISOString(), percobaan: (old?.percobaan || 0) + 1 });
+        const id = rid(), kel = isKel();
+        if (!(await db.get(`users/${id}`))) {
+          await db.set(`users/${id}`, kel
+            ? { nama: session.peserta, kelas: session.kelas, mode: "anggota", kelompok: session.name, dibuat: new Date().toISOString() }
+            : { nama: session.name, kelas: session.kelas, mode: session.mode || "individu", ...(session.anggota ? { anggota: session.anggota } : {}), dibuat: new Date().toISOString() });
+        }
+        const old = await db.get(`results/${id}/${kind}`);
+        await db.set(`results/${id}/${kind}`, { nama: atasNama, ...(kel ? { kelompok: session.name } : {}), kelas: session.kelas, skor, benar, total: qs.length, tanggal: new Date().toISOString(), percobaan: (old?.percobaan || 0) + 1 });
+        if (kel) { session.peserta = null; saveSession(); } // anggota berikutnya wajib memasukkan namanya sendiri
       } catch (e) { console.error(e); toast("Nilai gagal tersimpan. Beri tahu gurumu.", "err"); }
     }
     const msg = skor >= 80 ? "Luar biasa! Penemuanmu kuat." : skor >= 60 ? "Bagus! Tinggal sedikit lagi." : "Tidak apa-apa. Baca pembahasan di bawah, lalu ulangi materi bagian yang belum kuat.";
-    box.innerHTML = `<div class="row"><div class="score"><big>${skor}</big><small>${benar} dari ${qs.length} benar</small></div><p style="flex:1;min-width:200px"><b>${msg}</b><br>${student ? "Nilaimu sudah tersimpan." : "Mode pratinjau: nilai tidak disimpan."}</p></div>
+    box.innerHTML = `<div class="row"><div class="score"><big>${skor}</big><small>${benar} dari ${qs.length} benar</small></div><p style="flex:1;min-width:200px"><b>${msg}</b><br>${student ? `Nilaimu sudah tersimpan atas nama <b>${esc(atasNama)}</b>.` : "Mode pratinjau: nilai tidak disimpan."}</p></div>
       <h2 style="margin-top:22px">Pembahasan</h2>
       ${qs.map((q, k) => {
         const ok = ans[k] === Number(q.kunci);
@@ -928,35 +987,41 @@ function runTest(qs, kind, student) {
 
 /* ---------- Nilai siswa ---------- */
 async function vNilai(v) {
-  const [pre, post, lat, rem, pen] = await Promise.all(["pre", "post", "latihan", "remedia", "pengayaan"].map(k => db.get(`results/${session.uid}/${k}`)));
+  if (isKel()) { session.peserta = null; saveSession(); } // nama wajib diisi lagi tiap membuka halaman
+  return nilaiView(v);
+}
+async function nilaiView(v) {
+  if (isKel() && !session.peserta) { renderPesertaPicker(v, pageHead("🏅", "Nilaiku", "Pilih namamu untuk melihat nilaimu sendiri."), () => nilaiView(v)); return; }
+  const [pre, post, lat, rem, pen] = await Promise.all(["pre", "post", "latihan", "remedia", "pengayaan"].map(k => db.get(`results/${rid()}/${k}`)));
   const badges = [
     ["🧭", "Penjelajah Awal", !!pre], ["🏁", "Sampai Garis Akhir", !!post],
     ["⭐", "Bintang (≥ 80)", !!post && post.skor >= 80], ["📈", "Naik Level", !!pre && !!post && post.skor > pre.skor]
   ];
   const sc = (x, lbl, c) => x ? `<div class="score ${c}"><big>${x.skor}</big><small>${lbl}</small></div>` : `<div class="score empty"><big>–</big><small>${lbl}: belum</small></div>`;
   const delta = pre && post ? post.skor - pre.skor : null;
-  v.innerHTML = pageHead("🏅", "Nilaiku", `Halo, ${session.name}${session.anggota ? " (" + session.anggota.join(", ") + ")" : ""}. Halaman ini hanya bisa dilihat olehmu.`) + `
+  v.innerHTML = pageHead("🏅", "Nilaiku", `Halo, ${whoName()}${isKel() ? " (" + session.name + ")" : ""}. Halaman ini hanya bisa dilihat olehmu.`) + `${isKel() ? '<p><button class="btn sm ghost" type="button" id="pnChange">Ganti nama</button></p>' : ""}
     <section class="card"><div class="row" style="gap:28px">${sc(pre, "Pre Test", "")}${sc(post, "Post Test", "mint")}${lat ? sc(lat, "Latihan", "") : ""}${rem ? sc(rem, "Remedia", "") : ""}${pen ? sc(pen, "Pengayaan", "mint") : ""}</div>
     ${delta !== null ? `<p style="margin-top:20px"><b>Perubahanmu: <span class="${delta >= 0 ? "up" : "down"}">${delta >= 0 ? "+" : ""}${delta}</span></b> ${delta > 0 ? "— kamu berkembang!" : delta === 0 ? "— bertahan. Coba ulangi materi yang masih ragu." : "— tidak apa-apa, cek pembahasan dan coba lagi."}</p>` : `<p style="margin-top:20px" class="muted">Selesaikan Pre Test dan Post Test untuk melihat perkembanganmu.</p>`}</section>
     <h2>Lencanamu</h2><div class="badges">${badges.map(([i, t, on]) => `<div class="badge ${on ? "" : "off"}"><i>${i}</i>${t}</div>`).join("")}</div>`;
+  if ($("#pnChange")) $("#pnChange").onclick = () => { session.peserta = null; saveSession(); nilaiView(v); };
 }
 
 /* ---------- Rekap nilai (guru & admin) ---------- */
 async function loadRekap() {
   const [users, results] = await Promise.all([db.get("users"), db.get("results")]);
-  return Object.entries(users || {}).map(([uid, u]) => ({ uid, nama: u.nama, kelas: u.kelas, pre: results?.[uid]?.pre, post: results?.[uid]?.post, lat: results?.[uid]?.latihan, rem: results?.[uid]?.remedia, pen: results?.[uid]?.pengayaan, mode: u.mode, anggota: u.anggota }))
+  return Object.entries(users || {}).map(([uid, u]) => ({ uid, nama: u.nama, kelas: u.kelas, pre: results?.[uid]?.pre, post: results?.[uid]?.post, lat: results?.[uid]?.latihan, rem: results?.[uid]?.remedia, pen: results?.[uid]?.pengayaan, mode: u.mode, anggota: u.anggota, kelompok: u.kelompok }))
     .sort((a, b) => (a.kelas || "").localeCompare(b.kelas || "") || (a.nama || "").localeCompare(b.nama || ""));
 }
 
 async function renderRekap(pane, canReset) {
   const rows = await loadRekap();
   const avg = k => { const a = rows.filter(r => r[k]).map(r => r[k].skor); return a.length ? Math.round(a.reduce((x, y) => x + y, 0) / a.length) : "–"; };
-  pane.innerHTML = `<div class="stat"><div><b>${rows.length}</b>siswa terdaftar</div><div><b>${avg("pre")}</b>rata-rata pre test</div><div><b>${avg("post")}</b>rata-rata post test</div></div>
+  pane.innerHTML = `<div class="stat"><div><b>${rows.filter(r => r.mode !== "kelompok").length}</b>siswa terdaftar</div><div><b>${avg("pre")}</b>rata-rata pre test</div><div><b>${avg("post")}</b>rata-rata post test</div></div>
     <div class="row" style="margin-bottom:14px"><input type="search" id="rkFilter" placeholder="Cari nama atau kelas…" style="max-width:320px"><button class="btn sm sun" type="button" data-act="export-csv">Unduh CSV</button>${canReset ? '<button class="btn sm ghost" type="button" data-act="del-all-students">🗑️ Hapus semua data siswa</button>' : ""}</div>
     <div class="tbl-wrap"><table><thead><tr><th>Nama</th><th>Kelas</th><th>Pre</th><th>Post</th><th>Latihan</th><th>Remedia</th><th>Pengayaan</th><th>Selisih</th>${canReset ? "<th>Aksi</th>" : ""}</tr></thead>
     <tbody>${rows.map(r => {
       const d = r.pre && r.post ? r.post.skor - r.pre.skor : null;
-      return `<tr data-q="${esc((r.nama + " " + r.kelas + " " + (r.anggota || []).join(" ")).toLowerCase())}"><td>${esc(r.nama)}${r.anggota?.length ? `<ol class="anggota">${r.anggota.map(x => `<li>${esc(x)}</li>`).join("")}</ol>` : ""}</td><td>${esc(r.kelas)}</td><td class="num">${r.pre ? r.pre.skor : "–"}</td><td class="num">${r.post ? r.post.skor : "–"}</td><td class="num">${r.lat ? r.lat.skor : "–"}</td><td class="num">${r.rem ? r.rem.skor : "–"}</td><td class="num">${r.pen ? r.pen.skor : "–"}</td>
+      return `<tr data-q="${esc((r.nama + " " + r.kelas + " " + (r.anggota || []).join(" ") + " " + (r.kelompok || "")).toLowerCase())}"><td>${esc(r.nama)}${r.kelompok ? `<br><small class="muted">Kelompok: ${esc(r.kelompok)}</small>` : ""}${r.anggota?.length ? `<ol class="anggota">${r.anggota.map(x => `<li>${esc(x)}</li>`).join("")}</ol>` : ""}</td><td>${esc(r.kelas)}</td><td class="num">${r.pre ? r.pre.skor : "–"}</td><td class="num">${r.post ? r.post.skor : "–"}</td><td class="num">${r.lat ? r.lat.skor : "–"}</td><td class="num">${r.rem ? r.rem.skor : "–"}</td><td class="num">${r.pen ? r.pen.skor : "–"}</td>
         <td class="${d === null ? "" : d >= 0 ? "up" : "down"}">${d === null ? "–" : (d >= 0 ? "+" : "") + d}</td>
         ${canReset ? `<td>${r.pre ? `<button class="edit danger" type="button" data-act="reset-result" data-uid="${esc(r.uid)}" data-k="pre">Reset Pre</button> ` : ""}${r.post ? `<button class="edit danger" type="button" data-act="reset-result" data-uid="${esc(r.uid)}" data-k="post">Reset Post</button> ` : ""}<button class="edit danger" type="button" data-act="del-student" data-uid="${esc(r.uid)}">🗑️ Hapus data</button></td>` : ""}</tr>`;
     }).join("") || `<tr><td colspan="9" class="muted">Belum ada siswa yang masuk.</td></tr>`}</tbody></table></div>`;
@@ -967,22 +1032,56 @@ async function renderRekap(pane, canReset) {
 
 /* ---------- Daftar soal ---------- */
 async function renderQList(pane, canEdit, kinds = ["pre", "post", "remedia", "pengayaan", "latihan"]) {
+  await loadLevels();
   const lists = await Promise.all(kinds.map(k => getQuestions(k)));
+  const count = {};
+  lists.flat().forEach(q => { const c = levelCode(q.tingkat) || "-"; count[c] = (count[c] || 0) + 1; });
   const block = (kind, title, arr) => `<h2>${title} <span class="chip">${arr.length} soal</span></h2>
     <div class="row" style="margin-bottom:12px"><button class="btn sm mint" type="button" data-act="add-q" data-kind="${kind}">+ Tambah soal ${KIND_LABEL[kind]}</button></div>
-    ${arr.map((q, n) => `<div class="card flat" style="padding:14px 18px;margin-bottom:12px"><div class="row between"><b>${n + 1}. ${esc(q.teks)}</b>
+    ${arr.map((q, n) => `<div class="card flat" data-tk="${esc(levelCode(q.tingkat))}" style="padding:14px 18px;margin-bottom:12px"><div class="row between"><b>${n + 1}. ${esc(q.teks)}</b>
       ${canEdit ? `<span class="row"><button class="edit" type="button" data-act="edit-q" data-kind="${kind}" data-id="${esc(q.id)}">✏️</button><button class="edit danger" type="button" data-act="del-q" data-kind="${kind}" data-id="${esc(q.id)}">🗑️</button></span>` : ""}</div>
+      <p style="margin:6px 0 0">${q.tingkat ? `<span class="chip">${esc(levelLabel(q.tingkat))}</span>` : ""}</p>
       <p class="muted" style="margin:6px 0 0">${q.opsi.map((o, k) => `${"ABCD"[k]}. ${esc(o)}`).join(" · ")} — kunci: <b>${"ABCD"[q.kunci]}</b> · oleh ${esc(q.oleh || "-")}</p></div>`).join("")}`;
-  pane.innerHTML = kinds.map((k, i) => block(k, { pre: "Pre Test (diagnostik)", post: "Post Test (sumatif)", remedia: "Remedia", pengayaan: "Pengayaan", latihan: "Soal Lain (latihan)" }[k], lists[i])).join("");
+  const head = `<section class="card" style="margin-bottom:18px"><h2>Tingkat berpikir</h2>
+    <p class="muted">Jumlah soal per tingkat (semua jenis tes):</p>
+    <div class="row" style="margin-bottom:12px">${LEVELS.map(l => `<span class="chip">${esc(l.kode)} ${esc(l.nama)}: <b>${count[l.kode] || 0}</b></span>`).join("")}</div>
+    <div class="row"><label class="field" style="max-width:280px;margin:0"><span>Tampilkan tingkat</span><select id="qlvFilter"><option value="">Semua tingkat</option>${LEVELS.map(l => `<option value="${esc(l.kode)}">${esc(l.kode)} — ${esc(l.nama)}</option>`).join("")}</select></label>
+    ${canEdit ? '<button class="btn sm sun" type="button" data-act="edit-levels">⚙️ Atur tingkat (C1–C6)</button>' : ""}</div></section>`;
+  pane.innerHTML = head + kinds.map((k, i) => block(k, { pre: "Pre Test (diagnostik)", post: "Post Test (sumatif)", remedia: "Remedia", pengayaan: "Pengayaan", latihan: "Soal Lain (latihan)" }[k], lists[i])).join("");
+  $("#qlvFilter", pane).onchange = e => { const f = e.target.value; $$("[data-tk]", pane).forEach(c => { c.hidden = !!f && c.dataset.tk !== f; }); };
 }
 
-function questionForm(kind, q) {
+function levelsForm() {
+  openForm({
+    title: "Atur tingkat berpikir",
+    intro: "Satu baris satu tingkat, format: KODE | Nama. Contoh: C1 | Mengingat. Boleh mengganti nama, menambah, atau menghapus baris. Soal menyimpan KODE-nya, jadi mengganti nama tidak merusak soal yang sudah ada.",
+    fields: [{ key: "daftar", label: "Daftar tingkat", type: "textarea", rows: 8, math: false, value: LEVELS.map(l => `${l.kode} | ${l.nama}`).join("\n"), hint: "Kosongkan semua baris lalu simpan untuk kembali ke bawaan C1–C6." }],
+    onSave: async v => {
+      const lines = String(v.daftar || "").split("\n").map(x => x.trim()).filter(Boolean);
+      if (!lines.length) { await db.remove("questions/_tingkat"); toast("Dikembalikan ke bawaan C1–C6."); await route(); return; }
+      const out = [], seen = new Set();
+      for (const ln of lines) {
+        const m = ln.match(/^([^|]{1,8})\|(.{1,40})$/);
+        if (!m) throw new Error("Format salah: " + ln);
+        const kode = m[1].trim().toUpperCase(), nama = m[2].trim();
+        if (!kode || !nama || seen.has(kode)) throw new Error("Kode kosong atau ganda: " + ln);
+        seen.add(kode); out.push({ kode, nama });
+      }
+      await db.set("questions/_tingkat", out);
+      toast("Tingkat diperbarui.");
+      await route();
+    }
+  });
+}
+
+async function questionForm(kind, q) {
   const edit = !!q;
+  await loadLevels();
   openForm({
     title: edit ? "Edit soal" : `Tambah soal ${KIND_LABEL[kind]}`,
     intro: "Soal langsung muncul di halaman tes siswa.",
     fields: [
-      { key: "tingkat", label: "Tingkat berpikir", type: "select", value: q?.tingkat || "Menerapkan", options: ["Mengingat", "Memahami", "Menerapkan", "Menganalisis", "Mengevaluasi"].map(x => [x, x]) },
+      { key: "tingkat", label: "Tingkat berpikir", type: "select", value: levelCode(q?.tingkat) || (LEVELS.find(l => l.kode === "C3") ? "C3" : LEVELS[0].kode), options: LEVELS.map(l => [l.kode, `${l.kode} — ${l.nama}`]) },
       { key: "teks", label: "Pertanyaan", type: "textarea", rows: 3, value: q?.teks },
       ...["A", "B", "C", "D"].map((L, k) => ({ key: `o${k}`, label: `Pilihan ${L}`, value: q?.opsi?.[k], math: true })),
       { key: "kunci", label: "Jawaban benar", type: "select", value: q?.kunci ?? 0, options: [[0, "A"], [1, "B"], [2, "C"], [3, "D"]] },
@@ -1172,10 +1271,16 @@ const ACTIONS = {
         const path = t === "utama" ? "content/dev/utama" : `content/dev/dpa/${t}`;
         // Foto disimpan LANGSUNG di dalam konten (satu kali tulis), jadi ikut tersinkron ke semua perangkat.
         const meta = { nama: v.nama, peran: v.peran, deskripsi: v.deskripsi, foto: v.foto || "" };
+        if (DEMO) { toast("Firebase belum terhubung (penanda 'Lokal'). Foto TIDAK dikirim ke perangkat lain. Buka #/cek lalu perbaiki koneksi.", "err"); throw new Error("mode lokal"); }
         await withTimeout(db.set(path, meta), 25000, "timeout menyimpan (koneksi lambat atau terputus)");
         if (v.foto) {
-          const back = await db.get(path);
-          if (!back || back.foto !== v.foto) throw new Error("foto tidak tersimpan");
+          let back;
+          try { back = await publicRead(path); }
+          catch (e) {
+            if (e.code) { toast(`Server menolak dibaca publik (${e.message}). Periksa Rules: quanta/content harus .read true.`, "err"); throw e; }
+            back = undefined; // jaringan terputus saat memeriksa: lewati pemeriksaan
+          }
+          if (back !== undefined && (!back || back.foto !== v.foto)) { toast("Foto belum ada di server. Coba simpan lagi.", "err"); throw new Error("foto tidak tersimpan"); }
         }
         try { await db.remove(`foto/${id}`); } catch { /* data foto lama, boleh dilewati */ }
         toast("Tersimpan dan tersinkron.");
@@ -1188,6 +1293,7 @@ const ACTIONS = {
     fields: Object.entries(C.links).map(([k, u]) => ({ key: k, label: k, type: "url", value: u })),
     onSave: async v => { await db.set("content/links", v); toast("Tautan diperbarui."); await refresh(); }
   }),
+  "edit-levels": () => levelsForm(),
   "add-q": b => questionForm(b.dataset.kind),
   "edit-q": async b => { const qs = await getQuestions(b.dataset.kind); questionForm(b.dataset.kind, qs.find(q => q.id === b.dataset.id)); },
   "del-q": async b => {
@@ -1316,8 +1422,8 @@ const ACTIONS = {
     try { await db.remove("_uji"); log(true, "Bersihkan data uji"); } catch (e) { log(false, `Hapus gagal: ${e.code || e.message}`); }
     for (const [id, p, path] of [["utama", C.dev.utama, "content/dev/utama"], ["dpa0", C.dev.dpa[0], "content/dev/dpa/0"], ["dpa1", C.dev.dpa[1], "content/dev/dpa/1"]]) {
       try {
-        const d = await db.get(path);
-        log(true, `Foto ${id}: ${d?.foto ? Math.round(d.foto.length / 1024) + " KB tersimpan di konten (tersinkron)" : p.foto ? "ada, tetapi masih di data lama (simpan ulang lewat Edit agar tersinkron)" : "belum ada"}`);
+        const d = await publicRead(path);
+        log(true, `Foto ${id} (dibaca publik seperti perangkat lain): ${d?.foto ? Math.round(d.foto.length / 1024) + " KB tersimpan di konten (tersinkron)" : p.foto ? "ada, tetapi masih di data lama (simpan ulang lewat Edit agar tersinkron)" : "belum ada"}`);
       } catch (e) { log(false, `Foto ${id}: gagal dibaca (${e.code || e.message})`); }
     }
   },

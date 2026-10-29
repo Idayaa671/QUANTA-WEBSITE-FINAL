@@ -1,4 +1,4 @@
-QUANTA - PANDUAN PEMASANGAN (versi 2026.10.25-a)
+QUANTA - PANDUAN PEMASANGAN (versi 2026.10.26-a)
 ==================================================
 Proyek Firebase: website-quanta (khusus QUANTA, Realtime Database kawasan asia-southeast1).
 
@@ -11,7 +11,7 @@ Cara 2: unggah tiga file di folder "pilihan-A-tiga-file" (index.html, style.css,
          Hapus dulu file versi lama agar tidak tercampur.
 
 Tunggu 1-2 menit, buka alamat GitHub Pages, lalu tekan Ctrl+Shift+R.
-Di bagian paling bawah halaman harus tertulis: v2026.10.25-a
+Di bagian paling bawah halaman harus tertulis: v2026.10.26-a
 Bila muncul peringatan merah "File tidak cocok", berarti masih ada file lama: ganti semuanya.
 
 B. FIREBASE (sekali saja, di proyek website-quanta)
@@ -45,7 +45,7 @@ Penilaian dihitung di browser, jadi siswa yang paham teknis masih bisa mengirim 
 untuk dirinya sendiri (Rules hanya memastikan angka 0-100). Untuk ujian penting, nilai
 sebaiknya diperiksa ulang oleh guru.
 
-F. FOTO PENGEMBANG / DPA (diperbaiki di v2026.10.25-a)
+F. FOTO PENGEMBANG / DPA (diperbaiki di v2026.10.26-a)
 ------------------------------------------------------
 Foto kini otomatis dikecilkan (maks. 360 px, sekitar 40 KB) dan disimpan LANGSUNG di dalam
 konten Firebase bersama nama dan deskripsi. Jadi satu kali simpan sudah tersinkron ke semua
@@ -54,7 +54,7 @@ Foto lama: buka Pengembang > Edit > Simpan sekali lagi (foto tidak perlu dipilih
 agar dipindahkan ke format baru. Data foto lama di node "foto" dihapus otomatis.
 Pengecekan: Panel Admin > Uji koneksi dan foto. Tiap foto harus bertulis "tersimpan di konten".
 
-G. RUMUS MATEMATIKA (baru di v2026.10.25-a)
+G. RUMUS MATEMATIKA (baru di v2026.10.26-a)
 -------------------------------------------
 Rumus ditulis dengan tanda dolar: $x^2 - 4 = 0$ tampil sebaris, $$\frac{-b \pm \sqrt{b^2-4ac}}{2a}$$
 tampil di baris sendiri. Berlaku di soal, pilihan jawaban, pembahasan, materi, CP/TP/ATP, dll.
@@ -65,3 +65,24 @@ Cara mengedit tanpa hafal kode:
 3. Untuk mengubah rumus yang sudah ada: letakkan kursor di dalam $...$ lalu klik "∑ Rumus" lagi.
 Pratinjau rumus muncul di bawah kolom. Untuk tanda dolar biasa (harga), tulis \$ .
 Butuh internet saat memuat MathJax dan editor rumus (dari cdn.jsdelivr.net).
+
+H. MODE KELOMPOK: TES SENDIRI-SENDIRI (baru di v2026.10.26-a)
+-------------------------------------------------------------
+Siswa tetap masuk sebagai Kelompok (nama kelompok + daftar anggota). Setiap kali membuka
+Pre Test, Post Test, Remedia, Pengayaan, Latihan, atau Nilaiku, aplikasi meminta nama:
+pilih dari daftar anggota atau ketik nama sendiri, lalu lanjut. Nilai tersimpan atas nama
+orang itu (bukan nama kelompok), dan Pre Test terkunci per orang. Setelah selesai, nama
+dikosongkan lagi sehingga anggota berikutnya wajib mengisi namanya sendiri.
+Di Rekap Nilai, tiap anggota muncul sebagai baris sendiri dengan keterangan "Kelompok: ...".
+Nilai kelompok lama (yang tersimpan atas nama kelompok) tetap ada di barisnya sendiri.
+
+I. TINGKAT BERPIKIR C1-C6 DI BANK SOAL (baru di v2026.10.26-a)
+--------------------------------------------------------------
+Bawaan: C1 Mengingat, C2 Memahami, C3 Menerapkan, C4 Menganalisis, C5 Mengevaluasi, C6 Mencipta.
+- Bank Soal (guru dan admin) menampilkan jumlah soal per tingkat dan filter tingkat.
+- Tombol "Atur tingkat (C1-C6)": satu baris satu tingkat, format  KODE | Nama.
+  Boleh ganti nama, tambah (misal C7 | Refleksi), atau hapus baris. Kosongkan semua lalu
+  simpan untuk kembali ke bawaan. Soal menyimpan KODE-nya, jadi mengganti nama aman.
+- Soal lama yang bertingkat "Mengingat/Memahami/..." otomatis dibaca sebagai C1-C5.
+- Aturan Firebase tidak perlu diubah (pengaturan tersimpan di quanta/questions/_tingkat,
+  yang boleh ditulis guru dan admin).
