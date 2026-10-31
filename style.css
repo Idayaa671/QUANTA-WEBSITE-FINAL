@@ -422,3 +422,26 @@ math-field{display:block;width:100%;font-size:1.6rem;padding:10px 12px;border:3p
 .check{display:flex;gap:8px;align-items:center;font-weight:700;margin:0 0 14px}
 .check input{width:20px;height:20px}
 :root{--keyboard-zindex:10000}
+.field[hidden]{display:none}
+
+/* ===== Jawaban siswa & PDF (v10.28) ===== */
+#pdfHold{position:absolute;left:-99999px;top:0}
+.pdf-doc{width:186mm;background:#fff;color:#111;font:12px/1.5 Arial,Helvetica,sans-serif;padding:0}
+.pdf-doc h1{font-size:20px;margin:0 0 4px}
+.pdf-sec h3{font-size:15px;margin:0 0 2px}
+.pdf-sec h3 small{font-weight:400;color:#444}
+.pdf-meta{color:#555;margin:2px 0 8px;font-size:11px}
+.pdf-q{border-top:1px solid #ccc;padding:6px 0}
+.pdf-q p{margin:2px 0}
+.pdf-ans{white-space:pre-wrap}
+.pdf-key{color:#1a6b3a;white-space:pre-wrap}
+.pdf-nilai{font-weight:700}
+details>summary{cursor:pointer;list-style:none}
+details .pdf-sec{margin-top:10px}
+details .pdf-q{border-top:1px solid #ddd}
+@media print{
+  body.print-pdf>*:not(#pdfHold){display:none!important}
+  body.print-pdf #pdfHold{position:static;left:auto}
+  body.print-pdf .pdf-sec ~ .pdf-sec{break-before:page}
+  body.print-pdf .pdf-q{break-inside:avoid}
+}

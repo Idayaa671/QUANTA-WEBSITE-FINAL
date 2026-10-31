@@ -1,4 +1,4 @@
-QUANTA - PANDUAN PEMASANGAN (versi 2026.10.26-a)
+QUANTA - PANDUAN PEMASANGAN (versi 2026.10.31-a)
 ==================================================
 Proyek Firebase: website-quanta (khusus QUANTA, Realtime Database kawasan asia-southeast1).
 
@@ -11,7 +11,7 @@ Cara 2: unggah tiga file di folder "pilihan-A-tiga-file" (index.html, style.css,
          Hapus dulu file versi lama agar tidak tercampur.
 
 Tunggu 1-2 menit, buka alamat GitHub Pages, lalu tekan Ctrl+Shift+R.
-Di bagian paling bawah halaman harus tertulis: v2026.10.26-a
+Di bagian paling bawah halaman harus tertulis: v2026.10.31-a
 Bila muncul peringatan merah "File tidak cocok", berarti masih ada file lama: ganti semuanya.
 
 B. FIREBASE (sekali saja, di proyek website-quanta)
@@ -45,7 +45,7 @@ Penilaian dihitung di browser, jadi siswa yang paham teknis masih bisa mengirim 
 untuk dirinya sendiri (Rules hanya memastikan angka 0-100). Untuk ujian penting, nilai
 sebaiknya diperiksa ulang oleh guru.
 
-F. FOTO PENGEMBANG / DPA (diperbaiki di v2026.10.26-a)
+F. FOTO PENGEMBANG / DPA (diperbaiki di v2026.10.31-a)
 ------------------------------------------------------
 Foto kini otomatis dikecilkan (maks. 360 px, sekitar 40 KB) dan disimpan LANGSUNG di dalam
 konten Firebase bersama nama dan deskripsi. Jadi satu kali simpan sudah tersinkron ke semua
@@ -54,7 +54,7 @@ Foto lama: buka Pengembang > Edit > Simpan sekali lagi (foto tidak perlu dipilih
 agar dipindahkan ke format baru. Data foto lama di node "foto" dihapus otomatis.
 Pengecekan: Panel Admin > Uji koneksi dan foto. Tiap foto harus bertulis "tersimpan di konten".
 
-G. RUMUS MATEMATIKA (baru di v2026.10.26-a)
+G. RUMUS MATEMATIKA (baru di v2026.10.31-a)
 -------------------------------------------
 Rumus ditulis dengan tanda dolar: $x^2 - 4 = 0$ tampil sebaris, $$\frac{-b \pm \sqrt{b^2-4ac}}{2a}$$
 tampil di baris sendiri. Berlaku di soal, pilihan jawaban, pembahasan, materi, CP/TP/ATP, dll.
@@ -66,7 +66,7 @@ Cara mengedit tanpa hafal kode:
 Pratinjau rumus muncul di bawah kolom. Untuk tanda dolar biasa (harga), tulis \$ .
 Butuh internet saat memuat MathJax dan editor rumus (dari cdn.jsdelivr.net).
 
-H. MODE KELOMPOK: TES SENDIRI-SENDIRI (baru di v2026.10.26-a)
+H. MODE KELOMPOK: TES SENDIRI-SENDIRI (baru di v2026.10.31-a)
 -------------------------------------------------------------
 Siswa tetap masuk sebagai Kelompok (nama kelompok + daftar anggota). Setiap kali membuka
 Pre Test, Post Test, Remedia, Pengayaan, Latihan, atau Nilaiku, aplikasi meminta nama:
@@ -76,7 +76,7 @@ dikosongkan lagi sehingga anggota berikutnya wajib mengisi namanya sendiri.
 Di Rekap Nilai, tiap anggota muncul sebagai baris sendiri dengan keterangan "Kelompok: ...".
 Nilai kelompok lama (yang tersimpan atas nama kelompok) tetap ada di barisnya sendiri.
 
-I. TINGKAT BERPIKIR C1-C6 DI BANK SOAL (baru di v2026.10.26-a)
+I. TINGKAT BERPIKIR C1-C6 DI BANK SOAL (baru di v2026.10.31-a)
 --------------------------------------------------------------
 Bawaan: C1 Mengingat, C2 Memahami, C3 Menerapkan, C4 Menganalisis, C5 Mengevaluasi, C6 Mencipta.
 - Bank Soal (guru dan admin) menampilkan jumlah soal per tingkat dan filter tingkat.
@@ -86,3 +86,74 @@ Bawaan: C1 Mengingat, C2 Memahami, C3 Menerapkan, C4 Menganalisis, C5 Mengevalua
 - Soal lama yang bertingkat "Mengingat/Memahami/..." otomatis dibaca sebagai C1-C5.
 - Aturan Firebase tidak perlu diubah (pengaturan tersimpan di quanta/questions/_tingkat,
   yang boleh ditulis guru dan admin).
+
+J. SOAL PILIHAN GANDA ATAU ESAI (baru di v2026.10.31-a)
+-------------------------------------------------------
+Berlaku untuk Pre Test, Post Test, Remedia, Pengayaan, dan Soal Lain (latihan).
+- Bank Soal: tiap bagian punya dua tombol, "+ Pilihan ganda" dan "+ Esai". Di dalam form,
+  kolom "Jenis soal" bisa diganti. Soal esai berisi pertanyaan, pedoman jawaban/rubrik, dan
+  pembahasan (opsional). Rumus boleh dipakai di semua kolom.
+- Satu tes boleh berisi campuran pilihan ganda dan esai.
+- Siswa menjawab esai di kolom teks (ada tombol sisipkan rumus). Setelah selesai, siswa
+  melihat jawabannya dan pedoman jawaban.
+- Skor sementara dihitung dari pilihan ganda (esai dihitung 0 dulu) dan ditandai sementara.
+- Guru/admin menilai di tab "Nilai Esai": nilai tiap esai 0-100, lalu Simpan nilai.
+  Skor akhir = (jumlah PG benar + jumlah nilai esai/100) dibagi jumlah soal, dikali 100.
+  Di Rekap Nilai, skor yang esainya belum dinilai ditandai jam pasir.
+- Aturan Firebase tidak perlu diubah.
+
+K. NILAI OTOMATIS ATAU DINILAI GURU + HALAMAN JAWABAN SISWA (v2026.10.31-a)
+--------------------------------------------------------------------------
+- Tes yang SEMUA soalnya pilihan ganda: skor langsung muncul di halaman siswa dan masuk Rekap Nilai.
+- Tes yang memuat esai (campuran atau esai semua): siswa hanya melihat "Jawabanmu sudah terkirim".
+  Skor dan pembahasan tidak ditampilkan. Di Nilaiku tertulis "menunggu penilaian guru"
+  sampai guru selesai menilai, lalu skor akhir muncul.
+- Guru dan admin menilai di tab "Nilai Esai" (0-100 per esai).
+- Tab baru "Jawaban Siswa" (guru dan admin): memuat nama, kelas, kelompok, seluruh jawaban
+  (pilihan ganda dan esai), kunci, dan nilai. Bisa disaring menurut jenis tes, kelas, status,
+  dan nama. Tombol "Unduh PDF" membuat PDF dari daftar yang sedang ditampilkan; tiap siswa
+  mulai di halaman baru dan rumus ikut tampil. Perlu internet (pustaka PDF dimuat dari
+  cdnjs.cloudflare.com). Bila gagal, aplikasi membuka jendela cetak: pilih "Simpan sebagai PDF".
+- Jawaban rinci hanya tercatat untuk tes yang dikerjakan SETELAH versi ini terpasang.
+  Nilai lama tetap muncul, tetapi tanpa rincian jawaban.
+- Rata-rata di Rekap Nilai hanya menghitung nilai yang sudah final.
+
+L. KOREKSI AI / MANDIRI, KIRIM NILAI, DAN NILAIKU (v2026.10.31-a)
+----------------------------------------------------------------
+Tab "Jawaban & Koreksi" (guru dan admin) menggantikan tab Nilai Esai dan Jawaban Siswa.
+Buka kartu siswa, lalu pilih cara menilai esai:
+- Koreksi mandiri: ketik nilai 0-100 dan komentar (opsional) di bawah tiap esai, klik "Simpan nilai".
+- Koreksi AI: klik "Koreksi AI" (per siswa) atau "Koreksi AI semua yang belum dinilai".
+  AI hanya memberi USULAN nilai dan komentar; Anda periksa/ubah, lalu Simpan nilai.
+  Perlu API key Anthropic milik Anda sendiri (tombol "Pengaturan AI"). Key hanya disimpan di
+  browser Anda (hilang saat tab ditutup, kecuali Anda pilih simpan), tidak masuk Firebase,
+  dan pemakaian AI dikenakan biaya ke akun pemilik key. Tanpa key: "Salin prompt", tempel di
+  Claude/ChatGPT, lalu "Tempel hasil AI".
+- Kirim ke siswa: setelah semua esai dinilai, klik "Kirim ke siswa" (atau "Kirim semua nilai
+  yang sudah dinilai"). Sebelum dikirim, siswa hanya melihat "menunggu penilaian guru".
+  "Tarik nilai" membatalkan pengiriman. Tes pilihan ganda semua tetap otomatis.
+- Nilai esai yang dinilai di versi sebelumnya belum berstatus terkirim: pakai "Kirim semua".
+Nilaiku (siswa) memuat Pre Test, Post Test, Remedia, Pengayaan, dan Soal Tambahan, ditambah
+Rata-rata dari semua nilai yang sudah keluar, serta umpan balik esai yang sudah dikirim.
+Rekap Nilai (guru/admin) mendapat kolom Rata-rata.
+
+M. ALUR TES CAMPURAN (v2026.10.31-a)
+------------------------------------
+Pada tes yang memuat pilihan ganda dan esai, kartu siswa di "Jawaban & Koreksi" menampilkan:
+pilihan ganda sudah dinilai otomatis (benar/salah per soal), guru hanya mengisi nilai esai.
+Ringkasan di bagian atas kartu menghitung NILAI TOTAL langsung saat nilai esai diketik.
+Setelah seluruh esai dinilai, klik "Simpan & kirim ke siswa". Siswa menerima nilai total
+(pilihan ganda + esai); sebelum itu siswa tidak melihat nilai apa pun dari tes tersebut.
+
+N. POIN PER SOAL (v2026.10.31-a)
+--------------------------------
+Di form tambah/edit soal ada kolom "Poin untuk soal ini" (bawaan 1, boleh desimal seperti 0,5 atau 2,5).
+Nilai akhir = poin yang diperoleh / total poin semua soal x 100.
+- Pilihan ganda: benar = dapat poin penuh soal itu, salah = 0.
+- Esai: guru memberi nilai 0-100, poin yang diperoleh = nilai/100 x poin soal.
+  Contoh: PG 1 poin x 5 soal dan esai 5 poin (total 10 poin). PG benar 2, esai nilai 80:
+  2 + 4 = 6 dari 10 poin, nilai akhir 60.
+- Bank Soal menampilkan poin tiap soal dan total poin tiap bagian. Siswa melihat poin
+  di setiap soal. Ringkasan di kartu "Jawaban & Koreksi" ikut memakai bobot.
+- Poin dibekukan saat siswa mengirim jawaban. Mengubah poin soal sesudahnya tidak
+  mengubah nilai siswa yang sudah mengerjakan. Soal lama otomatis bernilai 1 poin.
