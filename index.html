@@ -533,7 +533,7 @@ details .pdf-q{border-top:1px solid #ddd}
   <script>
   /* Penjaga versi: bila script.js/style.css yang terbaca bukan versi yang sama dengan index.html,
      muncul peringatan merah (tanda ada file lama yang belum terganti). */
-  window.QUANTA_EXPECT = "2026.10.31-a";
+  window.QUANTA_EXPECT = "2026.11.01-a";
   addEventListener("load", function () {
     setTimeout(function () {
       if (window.QUANTA_VERSION !== window.QUANTA_EXPECT) {
@@ -565,7 +565,7 @@ const firebaseConfig = window.QUANTA_FIREBASE || {
   measurementId: "G-WVZ9FMZME8"
 };
 const FB_VER = "10.12.2";
-const APP_VERSION = "2026.10.31-a";
+const APP_VERSION = "2026.11.01-a";
 window.QUANTA_VERSION = APP_VERSION;
 // Akun peran di Firebase Authentication (dibuat sekali di Firebase Console).
 // Kode admin dan kode guru = password akun ini.
@@ -1416,6 +1416,56 @@ function levelOf(t) {
 const levelCode = t => levelOf(t)?.kode || t || "";
 const levelLabel = t => { const l = levelOf(t); return l ? `${l.kode} ${l.nama}` : (t || ""); };
 
+/* ---------- Poin bawaan & pengaturan poin massal ---------- */
+let POIN_DEF = { pg: 1, esai: 1 };
+async function loadPoinDef() {
+  try { const o = await db.get("questions/_poin"); if (o) POIN_DEF = { pg: Number(o.pg) > 0 ? Number(o.pg) : 1, esai: Number(o.esai) > 0 ? Number(o.esai) : 1 }; } catch { /* pakai bawaan */ }
+  return POIN_DEF;
+}
+const numIn = x => Number(String(x).replace(",", "."));
+
+async function poinForm(kind) {
+  await ensureSeed(kind);
+  const qs = await getQuestions(kind);
+  const pgs = qs.filter(q => !isEsai(q)), es = qs.filter(isEsai);
+  const total = r2(qs.reduce((a, q) => a + qPoin(q), 0));
+  await loadPoinDef();
+  openForm({
+    title: `Atur poin: ${KIND_LABEL[kind]}`,
+    intro: `Saat ini ${pgs.length} soal pilihan ganda dan ${es.length} soal esai, total ${fmtP(total)} poin. Pengaturan ini mengubah poin semua soal di tes ini sekaligus; poin satu soal tetap bisa diubah lewat ✏️. Hanya memengaruhi siswa yang mengerjakan setelah ini.`,
+    fields: [
+      { key: "mode", label: "Cara mengatur", type: "select", value: "sama", options: [["sama", "Poin sama untuk semua soal sejenis"], ["persen", "Bagi total 100 poin menurut persentase"]] },
+      { key: "pg", label: "Poin tiap soal pilihan ganda", type: "text", math: false, value: fmtP(pgs.length ? qPoin(pgs[0]) : POIN_DEF.pg) },
+      { key: "esai", label: "Poin tiap soal esai", type: "text", math: false, value: fmtP(es.length ? qPoin(es[0]) : POIN_DEF.esai) },
+      { key: "pct", label: "Bobot pilihan ganda (%), sisanya untuk esai", type: "text", math: false, value: "60", hint: "Contoh 60: pilihan ganda 60 poin dibagi rata ke semua soal PG, esai 40 poin dibagi rata ke semua soal esai (total 100)." },
+      { key: "bawaan", label: "Jadikan poin ini bawaan untuk soal baru?", type: "select", value: "0", options: [["0", "Tidak"], ["1", "Ya (hanya mode poin sama)"]] }
+    ],
+    onSave: async v => {
+      const bagi = (n, tot) => { if (!n) return []; const each = r2(tot / n), arr = Array(n).fill(each); arr[n - 1] = r2(tot - each * (n - 1)); return arr; };
+      let pPG, pEs;
+      if (v.mode === "persen") {
+        let pct = numIn(v.pct);
+        if (!Number.isFinite(pct) || pct < 0 || pct > 100) { toast("Persentase harus 0 sampai 100.", "err"); throw new Error("pct"); }
+        if (!pgs.length) pct = 0; else if (!es.length) pct = 100;
+        pPG = bagi(pgs.length, pct); pEs = bagi(es.length, 100 - pct);
+      } else {
+        const a = numIn(v.pg), b = numIn(v.esai);
+        if (!(a > 0) || !(b > 0) || a > 1000 || b > 1000) { toast("Poin harus angka lebih dari 0.", "err"); throw new Error("poin"); }
+        pPG = Array(pgs.length).fill(r2(a)); pEs = Array(es.length).fill(r2(b));
+        if (v.bawaan === "1") await db.set("questions/_poin", { pg: r2(a), esai: r2(b) });
+      }
+      const jobs = [];
+      pgs.forEach((q, i) => jobs.push(db.set(`questions/${kind}/${q.id}/poin`, pPG[i])));
+      es.forEach((q, i) => jobs.push(db.set(`questions/${kind}/${q.id}/poin`, pEs[i])));
+      await Promise.all(jobs);
+      toast(`Poin ${KIND_LABEL[kind]} diperbarui (total ${fmtP(r2([...pPG, ...pEs].reduce((x, y) => x + y, 0)))}).`);
+      await route();
+    }
+  });
+  const sw = () => { const per = $("#f_mode").value === "persen"; ["pg", "esai", "bawaan"].forEach(k => { $(`#f_${k}`).closest(".field").hidden = per; }); $("#f_pct").closest(".field").hidden = !per; };
+  $("#f_mode").onchange = sw; sw();
+}
+
 /* ---------- Peserta pada mode kelompok: tiap anggota mengerjakan tes atas namanya sendiri ---------- */
 const isKel = () => !!session && session.role === "siswa" && session.mode === "kelompok";
 const rid = () => (isKel() ? slug(`${session.peserta}-${session.kelas}`) : session.uid);
@@ -1648,7 +1698,7 @@ async function renderQList(pane, canEdit, kinds = ["pre", "post", "remedia", "pe
   const count = {};
   lists.flat().forEach(q => { const c = levelCode(q.tingkat) || "-"; count[c] = (count[c] || 0) + 1; });
   const block = (kind, title, arr) => `<h2>${title} <span class="chip">${arr.length} soal · ${fmtP(arr.reduce((a, q) => a + qPoin(q), 0))} poin</span></h2>
-    <div class="row" style="margin-bottom:12px"><button class="btn sm mint" type="button" data-act="add-q" data-kind="${kind}" data-jenis="pg">+ Pilihan ganda</button><button class="btn sm sky" type="button" data-act="add-q" data-kind="${kind}" data-jenis="esai">+ Esai</button></div>
+    <div class="row" style="margin-bottom:12px"><button class="btn sm mint" type="button" data-act="add-q" data-kind="${kind}" data-jenis="pg">+ Pilihan ganda</button><button class="btn sm sky" type="button" data-act="add-q" data-kind="${kind}" data-jenis="esai">+ Esai</button>${canEdit ? `<button class="btn sm sun" type="button" data-act="edit-poin" data-kind="${kind}">⚖️ Atur poin</button>` : ""}</div>
     ${arr.map((q, n) => `<div class="card flat" data-tk="${esc(levelCode(q.tingkat))}" style="padding:14px 18px;margin-bottom:12px"><div class="row between"><b>${n + 1}. ${esc(q.teks)}</b>
       ${canEdit ? `<span class="row"><button class="edit" type="button" data-act="edit-q" data-kind="${kind}" data-id="${esc(q.id)}">✏️</button><button class="edit danger" type="button" data-act="del-q" data-kind="${kind}" data-id="${esc(q.id)}">🗑️</button></span>` : ""}</div>
       <p style="margin:6px 0 0"><span class="chip">${isEsai(q) ? "Esai" : "Pilihan ganda"}</span> <span class="chip">${fmtP(qPoin(q))} poin</span> ${q.tingkat ? `<span class="chip">${esc(levelLabel(q.tingkat))}</span>` : ""}</p>
@@ -1688,6 +1738,7 @@ function levelsForm() {
 async function questionForm(kind, q, jenisAwal) {
   const edit = !!q;
   await loadLevels();
+  await loadPoinDef();
   const jenis0 = q ? (isEsai(q) ? "esai" : "pg") : (jenisAwal === "esai" ? "esai" : "pg");
   openForm({
     title: edit ? "Edit soal" : `Tambah soal ${KIND_LABEL[kind]}`,
@@ -1695,7 +1746,7 @@ async function questionForm(kind, q, jenisAwal) {
     fields: [
       { key: "jenis", label: "Jenis soal", type: "select", value: jenis0, options: [["pg", "Pilihan ganda"], ["esai", "Esai (uraian)"]] },
       { key: "tingkat", label: "Tingkat berpikir", type: "select", value: levelCode(q?.tingkat) || (LEVELS.find(l => l.kode === "C3") ? "C3" : LEVELS[0].kode), options: LEVELS.map(l => [l.kode, `${l.kode} — ${l.nama}`]) },
-      { key: "poin", label: "Poin untuk soal ini", type: "text", math: false, value: q?.poin ?? 1, placeholder: "contoh: 1", hint: "Boleh desimal (misal 0,5 atau 2,5). Nilai akhir = poin yang diperoleh ÷ total poin semua soal × 100. Contoh: pilihan ganda 1 poin, esai 5 poin." },
+      { key: "poin", label: "Poin untuk soal ini", type: "text", math: false, value: q?.poin ?? POIN_DEF[jenis0], placeholder: "contoh: 1", hint: "Boleh desimal (misal 0,5 atau 2,5). Nilai akhir = poin yang diperoleh ÷ total poin semua soal × 100. Contoh: pilihan ganda 1 poin, esai 5 poin." },
       { key: "teks", label: "Pertanyaan", type: "textarea", rows: 3, value: q?.teks },
       ...["A", "B", "C", "D"].map((L, k) => ({ key: `o${k}`, label: `Pilihan ${L}`, value: q?.opsi?.[k], math: true })),
       { key: "kunci", label: "Jawaban benar", type: "select", value: q?.kunci ?? 0, options: [[0, "A"], [1, "B"], [2, "C"], [3, "D"]] },
@@ -1709,7 +1760,7 @@ async function questionForm(kind, q, jenisAwal) {
         toast(esai ? "Isi pertanyaan dan pedoman jawaban dulu ya." : "Isi pertanyaan dan keempat pilihan dulu ya.", "err");
         throw new Error("kosong");
       }
-      const poin = Number(String(v.poin).replace(",", "."));
+      const poin = numIn(v.poin);
       if (!Number.isFinite(poin) || poin <= 0 || poin > 1000) { toast("Poin harus angka lebih dari 0 (misal 1 atau 2,5).", "err"); throw new Error("poin"); }
       await ensureSeed(kind);
       const id = q?.id || newId();
@@ -1723,7 +1774,10 @@ async function questionForm(kind, q, jenisAwal) {
     const esai = $("#f_jenis").value === "esai";
     ["o0", "o1", "o2", "o3", "kunci"].forEach(k => { $(`#f_${k}`).closest(".field").hidden = esai; });
     $("#f_kunciEsai").closest(".field").hidden = !esai;
+    if (!poinSentuh && !edit) $("#f_poin").value = fmtP(POIN_DEF[esai ? "esai" : "pg"]); // poin bawaan ikut jenis soal
   };
+  let poinSentuh = false;
+  $("#f_poin").addEventListener("input", () => { poinSentuh = true; });
   $("#f_jenis").onchange = sw;
   sw();
 }
@@ -2260,6 +2314,7 @@ const ACTIONS = {
     onSave: async v => { await db.set("content/links", v); toast("Tautan diperbarui."); await refresh(); }
   }),
   "edit-levels": () => levelsForm(),
+  "edit-poin": b => poinForm(b.dataset.kind),
   "add-q": b => questionForm(b.dataset.kind, undefined, b.dataset.jenis),
   "edit-q": async b => { const qs = await getQuestions(b.dataset.kind); questionForm(b.dataset.kind, qs.find(q => q.id === b.dataset.id)); },
   "del-q": async b => {
@@ -2428,7 +2483,7 @@ document.addEventListener("click", e => {
   // Penjagaan sisi tampilan; keamanan sebenarnya ada di aturan database.
   const adminOnly = ["edit-beranda", "edit-doc", "edit-materi", "edit-dev", "edit-links", "set-teacher-code", "add-materi", "del-materi", "move-materi", "sync-local", "diag", "change-admin-code"];
   if (adminOnly.includes(b.dataset.act) && !isAdmin()) return;
-  const teacherActs = ["add-q", "edit-q", "del-q", "export-csv", "reset-result", "del-student", "del-all-students"];
+  const teacherActs = ["add-q", "edit-q", "del-q", "edit-poin", "export-csv", "reset-result", "del-student", "del-all-students"];
   if ((teacherActs.includes(b.dataset.act) || b.dataset.act.startsWith("abs-")) && !isTeacher()) return;
   if (b.dataset.act === "abs-hapus-kelas" && !isAdmin()) return;
   ACTIONS[b.dataset.act](b, e);
