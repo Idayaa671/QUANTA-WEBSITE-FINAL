@@ -1,4 +1,4 @@
-QUANTA - PANDUAN PEMASANGAN (versi 2026.11.01-a)
+QUANTA - PANDUAN PEMASANGAN (versi 2026.11.02-a)
 ==================================================
 Proyek Firebase: website-quanta (khusus QUANTA, Realtime Database kawasan asia-southeast1).
 
@@ -11,7 +11,7 @@ Cara 2: unggah tiga file di folder "pilihan-A-tiga-file" (index.html, style.css,
          Hapus dulu file versi lama agar tidak tercampur.
 
 Tunggu 1-2 menit, buka alamat GitHub Pages, lalu tekan Ctrl+Shift+R.
-Di bagian paling bawah halaman harus tertulis: v2026.11.01-a
+Di bagian paling bawah halaman harus tertulis: v2026.11.02-a
 Bila muncul peringatan merah "File tidak cocok", berarti masih ada file lama: ganti semuanya.
 
 B. FIREBASE (sekali saja, di proyek website-quanta)
@@ -45,7 +45,7 @@ Penilaian dihitung di browser, jadi siswa yang paham teknis masih bisa mengirim 
 untuk dirinya sendiri (Rules hanya memastikan angka 0-100). Untuk ujian penting, nilai
 sebaiknya diperiksa ulang oleh guru.
 
-F. FOTO PENGEMBANG / DPA (diperbaiki di v2026.11.01-a)
+F. FOTO PENGEMBANG / DPA (diperbaiki di v2026.11.02-a)
 ------------------------------------------------------
 Foto kini otomatis dikecilkan (maks. 360 px, sekitar 40 KB) dan disimpan LANGSUNG di dalam
 konten Firebase bersama nama dan deskripsi. Jadi satu kali simpan sudah tersinkron ke semua
@@ -54,7 +54,7 @@ Foto lama: buka Pengembang > Edit > Simpan sekali lagi (foto tidak perlu dipilih
 agar dipindahkan ke format baru. Data foto lama di node "foto" dihapus otomatis.
 Pengecekan: Panel Admin > Uji koneksi dan foto. Tiap foto harus bertulis "tersimpan di konten".
 
-G. RUMUS MATEMATIKA (baru di v2026.11.01-a)
+G. RUMUS MATEMATIKA (baru di v2026.11.02-a)
 -------------------------------------------
 Rumus ditulis dengan tanda dolar: $x^2 - 4 = 0$ tampil sebaris, $$\frac{-b \pm \sqrt{b^2-4ac}}{2a}$$
 tampil di baris sendiri. Berlaku di soal, pilihan jawaban, pembahasan, materi, CP/TP/ATP, dll.
@@ -66,7 +66,7 @@ Cara mengedit tanpa hafal kode:
 Pratinjau rumus muncul di bawah kolom. Untuk tanda dolar biasa (harga), tulis \$ .
 Butuh internet saat memuat MathJax dan editor rumus (dari cdn.jsdelivr.net).
 
-H. MODE KELOMPOK: TES SENDIRI-SENDIRI (baru di v2026.11.01-a)
+H. MODE KELOMPOK: TES SENDIRI-SENDIRI (baru di v2026.11.02-a)
 -------------------------------------------------------------
 Siswa tetap masuk sebagai Kelompok (nama kelompok + daftar anggota). Setiap kali membuka
 Pre Test, Post Test, Remedia, Pengayaan, Latihan, atau Nilaiku, aplikasi meminta nama:
@@ -76,7 +76,7 @@ dikosongkan lagi sehingga anggota berikutnya wajib mengisi namanya sendiri.
 Di Rekap Nilai, tiap anggota muncul sebagai baris sendiri dengan keterangan "Kelompok: ...".
 Nilai kelompok lama (yang tersimpan atas nama kelompok) tetap ada di barisnya sendiri.
 
-I. TINGKAT BERPIKIR C1-C6 DI BANK SOAL (baru di v2026.11.01-a)
+I. TINGKAT BERPIKIR C1-C6 DI BANK SOAL (baru di v2026.11.02-a)
 --------------------------------------------------------------
 Bawaan: C1 Mengingat, C2 Memahami, C3 Menerapkan, C4 Menganalisis, C5 Mengevaluasi, C6 Mencipta.
 - Bank Soal (guru dan admin) menampilkan jumlah soal per tingkat dan filter tingkat.
@@ -87,7 +87,7 @@ Bawaan: C1 Mengingat, C2 Memahami, C3 Menerapkan, C4 Menganalisis, C5 Mengevalua
 - Aturan Firebase tidak perlu diubah (pengaturan tersimpan di quanta/questions/_tingkat,
   yang boleh ditulis guru dan admin).
 
-J. SOAL PILIHAN GANDA ATAU ESAI (baru di v2026.11.01-a)
+J. SOAL PILIHAN GANDA ATAU ESAI (baru di v2026.11.02-a)
 -------------------------------------------------------
 Berlaku untuk Pre Test, Post Test, Remedia, Pengayaan, dan Soal Lain (latihan).
 - Bank Soal: tiap bagian punya dua tombol, "+ Pilihan ganda" dan "+ Esai". Di dalam form,
@@ -102,7 +102,7 @@ Berlaku untuk Pre Test, Post Test, Remedia, Pengayaan, dan Soal Lain (latihan).
   Di Rekap Nilai, skor yang esainya belum dinilai ditandai jam pasir.
 - Aturan Firebase tidak perlu diubah.
 
-K. NILAI OTOMATIS ATAU DINILAI GURU + HALAMAN JAWABAN SISWA (v2026.11.01-a)
+K. NILAI OTOMATIS ATAU DINILAI GURU + HALAMAN JAWABAN SISWA (v2026.11.02-a)
 --------------------------------------------------------------------------
 - Tes yang SEMUA soalnya pilihan ganda: skor langsung muncul di halaman siswa dan masuk Rekap Nilai.
 - Tes yang memuat esai (campuran atau esai semua): siswa hanya melihat "Jawabanmu sudah terkirim".
@@ -118,7 +118,7 @@ K. NILAI OTOMATIS ATAU DINILAI GURU + HALAMAN JAWABAN SISWA (v2026.11.01-a)
   Nilai lama tetap muncul, tetapi tanpa rincian jawaban.
 - Rata-rata di Rekap Nilai hanya menghitung nilai yang sudah final.
 
-L. KOREKSI AI / MANDIRI, KIRIM NILAI, DAN NILAIKU (v2026.11.01-a)
+L. KOREKSI AI / MANDIRI, KIRIM NILAI, DAN NILAIKU (v2026.11.02-a)
 ----------------------------------------------------------------
 Tab "Jawaban & Koreksi" (guru dan admin) menggantikan tab Nilai Esai dan Jawaban Siswa.
 Buka kartu siswa, lalu pilih cara menilai esai:
@@ -137,7 +137,7 @@ Nilaiku (siswa) memuat Pre Test, Post Test, Remedia, Pengayaan, dan Soal Tambaha
 Rata-rata dari semua nilai yang sudah keluar, serta umpan balik esai yang sudah dikirim.
 Rekap Nilai (guru/admin) mendapat kolom Rata-rata.
 
-M. ALUR TES CAMPURAN (v2026.11.01-a)
+M. ALUR TES CAMPURAN (v2026.11.02-a)
 ------------------------------------
 Pada tes yang memuat pilihan ganda dan esai, kartu siswa di "Jawaban & Koreksi" menampilkan:
 pilihan ganda sudah dinilai otomatis (benar/salah per soal), guru hanya mengisi nilai esai.
@@ -145,7 +145,7 @@ Ringkasan di bagian atas kartu menghitung NILAI TOTAL langsung saat nilai esai d
 Setelah seluruh esai dinilai, klik "Simpan & kirim ke siswa". Siswa menerima nilai total
 (pilihan ganda + esai); sebelum itu siswa tidak melihat nilai apa pun dari tes tersebut.
 
-N. POIN PER SOAL (v2026.11.01-a)
+N. POIN PER SOAL (v2026.11.02-a)
 --------------------------------
 Di form tambah/edit soal ada kolom "Poin untuk soal ini" (bawaan 1, boleh desimal seperti 0,5 atau 2,5).
 Nilai akhir = poin yang diperoleh / total poin semua soal x 100.
@@ -158,7 +158,7 @@ Nilai akhir = poin yang diperoleh / total poin semua soal x 100.
 - Poin dibekukan saat siswa mengirim jawaban. Mengubah poin soal sesudahnya tidak
   mengubah nilai siswa yang sudah mengerjakan. Soal lama otomatis bernilai 1 poin.
 
-O. PENGATURAN POIN YANG FLEKSIBEL (v2026.11.01-a)
+O. PENGATURAN POIN YANG FLEKSIBEL (v2026.11.02-a)
 -------------------------------------------------
 Tiga tingkat pengaturan poin (guru dan admin):
 1. Per soal: kolom "Poin untuk soal ini" di form soal (pilihan ganda maupun esai).
@@ -169,3 +169,19 @@ Tiga tingkat pengaturan poin (guru dan admin):
 3. Poin bawaan soal baru: pilih "Ya" pada kolom bawaan; soal baru otomatis terisi poin itu
    menurut jenisnya (PG atau esai) dan tetap bisa diubah per soal.
 Pengaturan hanya memengaruhi siswa yang mengerjakan sesudahnya; nilai yang sudah masuk tidak berubah.
+
+P. TABEL DI MATERI, CP, TP, ATP, DAN TEKS LAINNYA (v2026.11.02-a)
+-----------------------------------------------------------------
+Semua kolom teks panjang (materi, CP, TP, ATP, Beranda, pembahasan, pedoman jawaban, dst.)
+punya tombol "Tabel" di samping tombol "Rumus".
+- Klik "Tabel", atur dengan tombol + Baris, - Baris, + Kolom, - Kolom, isi tiap sel,
+  pilih rata kolom (kiri/tengah/kanan), lalu "Sisipkan tabel". Baris pertama = judul kolom.
+- Untuk mengubah tabel yang sudah ada: letakkan kursor di dalam tabel, klik "Tabel" lagi.
+- Rumus boleh dipakai di sel dengan $...$. Teks tebal dengan **tebal**; ganti baris dalam
+  sel dengan <br>.
+- Di kolom teks, tabel tersimpan sebagai baris berawalan "|", misalnya:
+    | Aspek | Skor |
+    |---|:---:|
+    | Konsep | 4 |
+  Anda juga bisa mengetiknya langsung. Tanda | di dalam sel ditulis \| .
+- Di HP, tabel yang lebar bisa digeser ke samping di dalam kotaknya.

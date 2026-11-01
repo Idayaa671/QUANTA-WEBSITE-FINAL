@@ -445,3 +445,18 @@ details .pdf-q{border-top:1px solid #ddd}
   body.print-pdf .pdf-sec ~ .pdf-sec{break-before:page}
   body.print-pdf .pdf-q{break-inside:avoid}
 }
+
+/* ===== Tabel dalam teks (v11.02) ===== */
+.rich-tbl{overflow-x:auto;margin:0 0 1em;border:3px solid var(--ink);border-radius:14px;background:#fff}
+.rich-tbl table{min-width:0;width:100%;border-collapse:collapse}
+.rich-tbl th,.rich-tbl td{padding:8px 12px;border:2px solid var(--ink);vertical-align:top;position:static}
+.rich-tbl th{background:var(--ink);color:#fff}
+.rich-tbl tbody tr:nth-child(even) td{background:#f6f5ff}
+.rich-tbl td p,.rich-tbl th p{margin:0}
+.tbl-ed{overflow-x:auto;margin-bottom:12px}
+.tbl-ed table{min-width:0;width:auto}
+.tbl-ed th{background:#fff;color:var(--ink);padding:4px;position:static}
+.tbl-ed td{padding:3px;border:none}
+.tbl-ed input{min-width:120px;width:100%;font-weight:600}
+.tbl-ed input.tb-head{font-weight:800;background:#eceaff}
+.tbl-ed select{width:100%}

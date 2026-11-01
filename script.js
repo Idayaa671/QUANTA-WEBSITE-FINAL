@@ -16,7 +16,7 @@ const firebaseConfig = window.QUANTA_FIREBASE || {
   measurementId: "G-WVZ9FMZME8"
 };
 const FB_VER = "10.12.2";
-const APP_VERSION = "2026.11.01-a";
+const APP_VERSION = "2026.11.02-a";
 window.QUANTA_VERSION = APP_VERSION;
 // Akun peran di Firebase Authentication (dibuat sekali di Firebase Console).
 // Kode admin dan kode guru = password akun ini.
@@ -96,13 +96,53 @@ function toast(msg, type = "ok") {
 }
 
 /* Teks kaya: "## Judul", "- daftar", "**tebal**", "> pertanyaan berpikir kritis" */
+/* Pecah satu baris tabel menjadi sel. "|" di dalam $...$ atau didahului \ tidak memisahkan sel. */
+function splitRow(line) {
+  let l = String(line).trim();
+  if (l.startsWith("|")) l = l.slice(1);
+  if (l.endsWith("|") && !l.endsWith("\\|")) l = l.slice(0, -1);
+  const cells = []; let cur = "", math = false;
+  for (let i = 0; i < l.length; i++) {
+    const ch = l[i];
+    if (ch === "\\" && l[i + 1] === "|") { cur += "|"; i++; continue; }
+    if (ch === "$") math = !math;
+    if (ch === "|" && !math) { cells.push(cur.trim()); cur = ""; continue; }
+    cur += ch;
+  }
+  cells.push(cur.trim());
+  return cells;
+}
+const isSepRow = cells => cells.length > 0 && cells.every(c => /^:?-{2,}:?$/.test(c));
+function parseTableLines(lines) {
+  const rows = lines.map(splitRow);
+  let align = null;
+  if (rows.length >= 2 && isSepRow(rows[1])) { align = rows[1].map(c => (c.startsWith(":") && c.endsWith(":") ? "center" : c.endsWith(":") ? "right" : "left")); rows.splice(1, 1); }
+  const n = Math.max(...rows.map(r => r.length));
+  rows.forEach(r => { while (r.length < n) r.push(""); });
+  return { rows, align: Array.from({ length: n }, (_, i) => (align && align[i]) || "left"), header: !!align };
+}
+function tableHTML(lines) {
+  const { rows, align, header } = parseTableLines(lines);
+  const cell = (tag, c, i) => `<${tag} style="text-align:${align[i]}">${c.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/&lt;br&gt;/g, "<br>")}</${tag}>`;
+  const head = header ? `<thead><tr>${rows[0].map((c, i) => cell("th", c, i)).join("")}</tr></thead>` : "";
+  const body = (header ? rows.slice(1) : rows).map(r => `<tr>${r.map((c, i) => cell("td", c, i)).join("")}</tr>`).join("");
+  return `<div class="rich-tbl"><table>${head}<tbody>${body}</tbody></table></div>`;
+}
 function rich(t = "") {
   const out = [];
   let ul = false;
   const close = () => { if (ul) { out.push("</ul>"); ul = false; } };
-  for (const raw of esc(t).split("\n")) {
-    const l = raw.trim();
+  const lines = esc(t).split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i].trim();
     if (!l) { close(); continue; }
+    if (l.startsWith("|")) { // blok tabel: baris-baris berurutan yang diawali |
+      close();
+      const blk = [l];
+      while (i + 1 < lines.length && lines[i + 1].trim().startsWith("|")) blk.push(lines[++i].trim());
+      out.push(tableHTML(blk));
+      continue;
+    }
     const b = l.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
     if (l.startsWith("## ")) { close(); out.push(`<h3>${b.slice(3)}</h3>`); }
     else if (l.startsWith("- ")) { if (!ul) { out.push("<ul>"); ul = true; } out.push(`<li>${b.slice(2)}</li>`); }
@@ -369,7 +409,7 @@ function typesetSoon() {
   clearTimeout(mjTimer);
   mjTimer = setTimeout(async () => {
     if (!window.MathJax || !MathJax.typesetPromise) return; // MathJax belum selesai dimuat
-    const els = ["#view", "#modalRoot"].map(x => $(x)).filter(e => e && MATH_RE.test(e.textContent));
+    const els = [$("#view"), $("#modalRoot"), ...$$(".math-overlay")].filter(e => e && MATH_RE.test(e.textContent));
     if (!els.length) return;
     try { await MathJax.typesetPromise(els); } catch (e) { console.error("MathJax", e); }
   }, 120);
@@ -441,6 +481,62 @@ async function openMathEditor(initial, display, onOk) {
   }
 }
 
+/* ---------- Editor tabel (menghasilkan tabel gaya Markdown) ---------- */
+function tableMD(rows, align) {
+  const esCell = c => { let o = "", math = false; for (const ch of String(c)) { if (ch === "$") math = !math; o += ch === "|" && !math ? "\\|" : ch; } return o.replace(/\s*\n\s*/g, "<br>").trim(); };
+  const line = r => "| " + r.map(esCell).join(" | ") + " |";
+  const sep = "|" + align.map(a => (a === "center" ? ":---:" : a === "right" ? "---:" : "---")).join("|") + "|";
+  return [line(rows[0]), sep, ...rows.slice(1).map(line)].join("\n");
+}
+/* Cari blok tabel (baris berurutan berawalan |) yang mengapit kursor. */
+function tableAt(text, pos) {
+  const lines = text.split("\n"); let off = 0, idx = -1; const starts = [];
+  lines.forEach((l, i) => { starts.push(off); if (idx < 0 && pos >= off && pos <= off + l.length) idx = i; off += l.length + 1; });
+  if (idx < 0 || !lines[idx].trim().startsWith("|")) return null;
+  let a = idx, b = idx;
+  while (a > 0 && lines[a - 1].trim().startsWith("|")) a--;
+  while (b < lines.length - 1 && lines[b + 1].trim().startsWith("|")) b++;
+  return { start: starts[a], end: starts[b] + lines[b].length, lines: lines.slice(a, b + 1) };
+}
+function openTableEditor(initial, onOk) {
+  let st = initial ? { rows: initial.rows.map(r => [...r]), align: [...initial.align] } : { rows: [["Judul 1", "Judul 2", "Judul 3"], ["", "", ""], ["", "", ""]], align: ["left", "left", "left"] };
+  const box = document.createElement("div");
+  box.className = "overlay math-overlay";
+  box.innerHTML = `<div class="modal math-modal" role="dialog" aria-modal="true" aria-label="Editor tabel" style="max-width:820px">
+    <h2>▦ Editor tabel</h2>
+    <p class="muted">Baris pertama adalah judul kolom. Rumus boleh ditulis dengan $…$ di dalam sel.</p>
+    <div class="row" style="margin-bottom:10px"><button class="btn sm sky" type="button" data-t="addRow">+ Baris</button><button class="btn sm ghost" type="button" data-t="delRow">− Baris</button><button class="btn sm sky" type="button" data-t="addCol">+ Kolom</button><button class="btn sm ghost" type="button" data-t="delCol">− Kolom</button></div>
+    <div class="tbl-ed" id="tblGrid"></div>
+    <h3>Pratinjau</h3><div class="mathprev rich" id="tblPrev"></div>
+    <div class="row end" style="margin-top:14px"><button class="btn ghost" type="button" data-x>Batal</button><button class="btn" type="button" data-ok>Sisipkan tabel</button></div></div>`;
+  document.body.append(box);
+  const grid = $("#tblGrid", box), prev = $("#tblPrev", box);
+  let t = 0;
+  const preview = () => { prev.innerHTML = rich(tableMD(st.rows, st.align)); };
+  const draw = () => {
+    const nc = st.rows[0].length;
+    grid.innerHTML = `<table><thead><tr>${Array.from({ length: nc }, (_, c) => `<th><select data-al="${c}" aria-label="Rata kolom ${c + 1}"><option value="left">Rata kiri</option><option value="center">Tengah</option><option value="right">Rata kanan</option></select></th>`).join("")}</tr></thead>
+      <tbody>${st.rows.map((r, i) => `<tr>${r.map((c, j) => `<td><input type="text" data-r="${i}" data-c="${j}" value="${esc(c)}" aria-label="Baris ${i + 1} kolom ${j + 1}" ${i === 0 ? 'class="tb-head"' : ""}></td>`).join("")}</tr>`).join("")}</tbody></table>`;
+    $$("[data-al]", grid).forEach(sel => { sel.value = st.align[Number(sel.dataset.al)]; sel.onchange = () => { st.align[Number(sel.dataset.al)] = sel.value; preview(); }; });
+    $$("input", grid).forEach(inp => { inp.oninput = () => { st.rows[Number(inp.dataset.r)][Number(inp.dataset.c)] = inp.value; clearTimeout(t); t = setTimeout(preview, 200); }; });
+    preview();
+  };
+  const ops = {
+    addRow: () => st.rows.push(Array(st.rows[0].length).fill("")),
+    delRow: () => { if (st.rows.length > 2) st.rows.pop(); else toast("Minimal 2 baris (judul + 1 isi).", "err"); },
+    addCol: () => { st.rows.forEach(r => r.push("")); st.align.push("left"); },
+    delCol: () => { if (st.rows[0].length > 1) { st.rows.forEach(r => r.pop()); st.align.pop(); } else toast("Minimal 1 kolom.", "err"); }
+  };
+  $$("[data-t]", box).forEach(b => { b.onclick = () => { ops[b.dataset.t](); draw(); }; });
+  const close = () => box.remove();
+  box.addEventListener("keydown", e => { if (e.key === "Escape") { e.stopPropagation(); close(); } });
+  box.onclick = e => { if (e.target === box) close(); };
+  $("[data-x]", box).onclick = close;
+  $("[data-ok]", box).onclick = () => { onOk(tableMD(st.rows, st.align)); close(); };
+  draw();
+  setTimeout(() => { const f = $("input", grid); if (f) f.select(); }, 50);
+}
+
 /* Cari rumus $...$ atau $$...$$ yang mengapit posisi kursor. */
 function mathAt(text, pos) {
   const re = /\$\$([^$]+?)\$\$|\$([^$\n]+?)\$/g;
@@ -459,7 +555,7 @@ function fieldHTML(f) {
   else if (f.type === "select") input = `<select id="${id}">${f.options.map(([val, lab]) => `<option value="${esc(val)}" ${String(val) === String(v) ? "selected" : ""}>${esc(lab)}</option>`).join("")}</select>`;
   else if (f.type === "image") input = `<div class="imgpick"><img id="${id}_p" alt="Pratinjau foto" ${v ? `src="${esc(v)}"` : "hidden"}><input type="file" accept="image/*" id="${id}"></div>`;
   else input = `<input id="${id}" type="${f.type || "text"}" value="${esc(v)}" ${f.placeholder ? `placeholder="${esc(f.placeholder)}"` : ""}>`;
-  const mathUI = hasMath(f) ? `<span class="mathbar"><button class="btn sm sky" type="button" data-math="${f.key}">∑ Rumus</button><small>Klik untuk menyisipkan rumus. Letakkan kursor di dalam rumus $...$ lalu klik lagi untuk mengubahnya.</small></span><div class="mathprev" id="${id}_v" hidden></div>` : "";
+  const mathUI = hasMath(f) ? `<span class="mathbar"><button class="btn sm sky" type="button" data-math="${f.key}">∑ Rumus</button>${f.type === "textarea" && f.table !== false ? `<button class="btn sm sun" type="button" data-tbl="${f.key}">▦ Tabel</button>` : ""}<small>Klik untuk menyisipkan rumus. Letakkan kursor di dalam rumus $...$ lalu klik lagi untuk mengubahnya.</small></span><div class="mathprev" id="${id}_v" hidden></div>` : "";
   return `<div class="field"><label for="${id}">${esc(f.label)}</label>${input}${mathUI}${f.hint ? `<small>${esc(f.hint)}</small>` : ""}</div>`;
 }
 
@@ -519,6 +615,24 @@ function openForm({ title, intro = "", fields, onSave, saveLabel = "Simpan" }) {
         const caret = from + piece.length;
         el.focus(); el.setSelectionRange(caret, caret);
         upd();
+      });
+    };
+  });
+  fields.filter(f => hasMath(f) && f.type === "textarea" && f.table !== false).forEach(f => {
+    const el = $(`#f_${f.key}`, root), btn = $(`[data-tbl="${f.key}"]`, root);
+    if (!el || !btn) return;
+    btn.onclick = () => {
+      const pos = el.selectionStart ?? el.value.length, hit = tableAt(el.value, pos);
+      openTableEditor(hit ? parseTableLines(hit.lines) : null, md => {
+        let from, to, text = el.value;
+        if (hit) { from = hit.start; to = hit.end; }
+        else { from = pos; to = el.selectionEnd ?? pos; }
+        const before = text.slice(0, from), after = text.slice(to);
+        const pre = before && !before.endsWith("\n") ? "\n" : "", post = after && !after.startsWith("\n") ? "\n" : "";
+        el.value = before + pre + md + post + after;
+        const caret = (before + pre + md).length;
+        el.focus(); el.setSelectionRange(caret, caret);
+        el.dispatchEvent(new Event("input"));
       });
     };
   });
