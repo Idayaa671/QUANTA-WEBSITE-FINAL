@@ -460,3 +460,11 @@ details .pdf-q{border-top:1px solid #ddd}
 .tbl-ed input{min-width:120px;width:100%;font-weight:600}
 .tbl-ed input.tb-head{font-weight:800;background:#eceaff}
 .tbl-ed select{width:100%}
+
+/* ===== Foto dalam materi (v11.03) ===== */
+.mfig{margin:14px auto;text-align:center}
+.mfig img{display:block;margin:0 auto;max-width:100%;height:auto;border:3px solid var(--ink);border-radius:14px;background:#fff;cursor:zoom-in}
+.mfig-s img{width:40%;min-width:200px}.mfig-m img{width:70%;min-width:240px}.mfig-l img{width:100%}
+.mfig figcaption{margin-top:6px;font-size:.92rem;color:var(--muted,#555);font-weight:600}
+.photo-zoom{z-index:9500;cursor:zoom-out;display:flex;align-items:center;justify-content:center;padding:12px}
+.photo-zoom img{max-width:96vw;max-height:92vh;border:3px solid #fff;border-radius:12px;background:#fff}

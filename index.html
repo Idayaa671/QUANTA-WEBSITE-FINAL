@@ -491,6 +491,14 @@ details .pdf-q{border-top:1px solid #ddd}
 .tbl-ed input.tb-head{font-weight:800;background:#eceaff}
 .tbl-ed select{width:100%}
 
+/* ===== Foto dalam materi (v11.03) ===== */
+.mfig{margin:14px auto;text-align:center}
+.mfig img{display:block;margin:0 auto;max-width:100%;height:auto;border:3px solid var(--ink);border-radius:14px;background:#fff;cursor:zoom-in}
+.mfig-s img{width:40%;min-width:200px}.mfig-m img{width:70%;min-width:240px}.mfig-l img{width:100%}
+.mfig figcaption{margin-top:6px;font-size:.92rem;color:var(--muted,#555);font-weight:600}
+.photo-zoom{z-index:9500;cursor:zoom-out;display:flex;align-items:center;justify-content:center;padding:12px}
+.photo-zoom img{max-width:96vw;max-height:92vh;border:3px solid #fff;border-radius:12px;background:#fff}
+
 </style>
 </head>
 <body>
@@ -548,7 +556,7 @@ details .pdf-q{border-top:1px solid #ddd}
   <script>
   /* Penjaga versi: bila script.js/style.css yang terbaca bukan versi yang sama dengan index.html,
      muncul peringatan merah (tanda ada file lama yang belum terganti). */
-  window.QUANTA_EXPECT = "2026.11.02-a";
+  window.QUANTA_EXPECT = "2026.11.03-a";
   addEventListener("load", function () {
     setTimeout(function () {
       if (window.QUANTA_VERSION !== window.QUANTA_EXPECT) {
@@ -580,7 +588,7 @@ const firebaseConfig = window.QUANTA_FIREBASE || {
   measurementId: "G-WVZ9FMZME8"
 };
 const FB_VER = "10.12.2";
-const APP_VERSION = "2026.11.02-a";
+const APP_VERSION = "2026.11.03-a";
 window.QUANTA_VERSION = APP_VERSION;
 // Akun peran di Firebase Authentication (dibuat sekali di Firebase Console).
 // Kode admin dan kode guru = password akun ini.
@@ -692,6 +700,9 @@ function tableHTML(lines) {
   const body = (header ? rows.slice(1) : rows).map(r => `<tr>${r.map((c, i) => cell("td", c, i)).join("")}</tr>`).join("");
   return `<div class="rich-tbl"><table>${head}<tbody>${body}</tbody></table></div>`;
 }
+const PH_LOAD = "data:image/svg+xml;utf8," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><rect width="100%" height="100%" fill="#eceaff"/><text x="50%" y="50%" text-anchor="middle" font-family="sans-serif" font-size="22" fill="#1B1A4B">Memuat foto…</text></svg>');
+const PH_ERR = "data:image/svg+xml;utf8," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><rect width="100%" height="100%" fill="#ffe4e4"/><text x="50%" y="50%" text-anchor="middle" font-family="sans-serif" font-size="22" fill="#1B1A4B">Foto belum termuat. Ketuk untuk coba lagi.</text></svg>');
+const FOTO_LINE = /^!\[(.*?)\]\(foto:([A-Za-z0-9_-]+)(?:\|([sml]))?\)$/;
 function rich(t = "") {
   const out = [];
   let ul = false;
@@ -700,6 +711,12 @@ function rich(t = "") {
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i].trim();
     if (!l) { close(); continue; }
+    const fm = FOTO_LINE.exec(l);
+    if (fm) { // foto pada barisnya sendiri: ![keterangan](foto:ID|ukuran)
+      close();
+      out.push(`<figure class="mfig mfig-${fm[3] || "m"}"><img data-foto="${fm[2]}" alt="${fm[1]}" src="${PH_LOAD}">${fm[1] ? `<figcaption>${fm[1]}</figcaption>` : ""}</figure>`);
+      continue;
+    }
     if (l.startsWith("|")) { // blok tabel: baris-baris berurutan yang diawali |
       close();
       const blk = [l];
@@ -934,7 +951,7 @@ async function publicRead(path) {
 async function refresh() { await loadContent(); await route(); }
 
 /* ---------- Modal formulir ---------- */
-function resizeImage(file, max = 360) {
+function resizeImage(file, max = 360, limit = 55000) {
   // Foto disimpan di dalam konten, jadi dibuat kecil: sisi terpanjang <= 360 px, ukuran <= ~40 KB.
   return new Promise((res, rej) => {
     const fr = new FileReader();
@@ -952,7 +969,7 @@ function resizeImage(file, max = 360) {
           g.drawImage(im, 0, 0, c.width, c.height);
           for (const q of [0.82, 0.72, 0.62, 0.5]) {
             out = c.toDataURL("image/jpeg", q);
-            if (out.length <= 55000) return res(out); // ~40 KB biner
+            if (out.length <= limit) return res(out);
           }
           side = Math.round(side * 0.8);
         }
@@ -979,7 +996,35 @@ function typesetSoon() {
   }, 120);
 }
 window.quantaTypeset = typesetSoon;
-new MutationObserver(typesetSoon).observe(document.body, { childList: true, subtree: true, characterData: true });
+const MFOTO = {};
+let hfTimer = 0;
+function hydrateSoon() { clearTimeout(hfTimer); hfTimer = setTimeout(hydrateFotos, 100); }
+async function hydrateFotos() {
+  for (const img of $$("img[data-foto]:not([data-loaded]):not([data-busy]):not([data-err])")) {
+    const id = img.dataset.foto;
+    if (MFOTO[id]) { img.src = MFOTO[id]; img.dataset.loaded = "1"; continue; }
+    img.dataset.busy = "1";
+    try {
+      const d = await withTimeout(db.get(`foto/${id}`), 20000, "timeout");
+      if (typeof d !== "string" || !d.startsWith("data:image")) throw new Error("kosong");
+      MFOTO[id] = d;
+      $$(`img[data-foto="${id}"]`).forEach(im => { im.src = d; im.dataset.loaded = "1"; });
+    } catch (e) { console.error("foto", id, e); img.src = PH_ERR; img.dataset.err = "1"; }
+    delete img.dataset.busy;
+  }
+}
+document.addEventListener("click", e => {
+  const img = e.target.closest && e.target.closest("img[data-foto]");
+  if (!img) return;
+  if (img.dataset.err) { delete img.dataset.err; img.src = PH_LOAD; hydrateFotos(); return; }
+  if (!img.dataset.loaded) return;
+  const ov = document.createElement("div");
+  ov.className = "overlay photo-zoom"; ov.setAttribute("role", "dialog"); ov.setAttribute("aria-label", "Foto diperbesar");
+  ov.innerHTML = `<img src="${img.src}" alt="${esc(img.alt)}">`;
+  ov.onclick = () => ov.remove();
+  document.body.append(ov);
+});
+new MutationObserver(() => { typesetSoon(); hydrateSoon(); }).observe(document.body, { childList: true, subtree: true, characterData: true });
 
 const MATHLIVE_URL = "https://cdn.jsdelivr.net/npm/mathlive@0.110.0/";
 let mlPromise = null;
@@ -1101,6 +1146,69 @@ function openTableEditor(initial, onOk) {
   setTimeout(() => { const f = $("input", grid); if (f) f.select(); }, 50);
 }
 
+/* ---------- Foto di dalam teks (hanya admin; disimpan di node "foto", dimuat saat dibutuhkan) ---------- */
+function photoLineAt(text, pos) {
+  let off = 0;
+  for (const l of text.split("\n")) {
+    if (pos >= off && pos <= off + l.length) { const m = FOTO_LINE.exec(l.trim()); return m ? { start: off, end: off + l.length, caption: m[1], id: m[2], size: m[3] || "m" } : null; }
+    off += l.length + 1;
+  }
+  return null;
+}
+async function openPhotoDialog(init, onDone) {
+  const box = document.createElement("div");
+  box.className = "overlay math-overlay";
+  box.innerHTML = `<div class="modal math-modal" role="dialog" aria-modal="true" aria-label="Sisipkan foto">
+    <h2>🖼️ ${init.id ? "Ubah foto" : "Sisipkan foto"}</h2>
+    <p class="muted">Foto dikecilkan otomatis (maks. 1000 px) lalu disimpan di Firebase dan tampil di semua perangkat.</p>
+    <label class="field"><span>${init.id ? "Ganti dengan foto lain (opsional)" : "Pilih foto"}</span><input id="phFile" type="file" accept="image/*"></label>
+    <div id="phWrap" style="text-align:center;margin-bottom:12px" ${init.id ? "" : "hidden"}><img id="phPrev" alt="Pratinjau foto" style="max-width:100%;max-height:260px;border:3px solid var(--ink);border-radius:12px"><p class="muted" id="phInfo" style="margin:6px 0 0"></p></div>
+    <label class="field"><span>Keterangan foto (opsional)</span><input id="phCap" type="text" maxlength="200" value="${esc(init.caption || "")}" placeholder="Contoh: Grafik y = x² − 4x + 3"></label>
+    <label class="field"><span>Ukuran tampil</span><select id="phSize"><option value="s">Kecil</option><option value="m">Sedang</option><option value="l">Besar (selebar halaman)</option></select></label>
+    <div class="row end"><button class="btn ghost" type="button" data-x>Batal</button><button class="btn" type="button" data-ok>${init.id ? "Simpan" : "Unggah &amp; sisipkan"}</button></div></div>`;
+  document.body.append(box);
+  const $$f = id => $("#" + id, box);
+  $$f("phSize").value = init.size || "m";
+  let pending = null;
+  const close = () => box.remove();
+  box.addEventListener("keydown", e => { if (e.key === "Escape") { e.stopPropagation(); close(); } });
+  box.onclick = e => { if (e.target === box) close(); };
+  $("[data-x]", box).onclick = close;
+  if (init.id) {
+    const show = d => { if (d) { $$f("phPrev").src = d; } };
+    if (MFOTO[init.id]) show(MFOTO[init.id]); else db.get(`foto/${init.id}`).then(d => { if (typeof d === "string") { MFOTO[init.id] = d; show(d); } }).catch(() => {});
+  }
+  $$f("phFile").onchange = async () => {
+    const f = $$f("phFile").files[0]; if (!f) return;
+    $$f("phInfo").textContent = "Memproses foto…"; $$f("phWrap").hidden = false;
+    try {
+      pending = await resizeImage(f, 1000, 220000);
+      $$f("phPrev").src = pending;
+      $$f("phInfo").textContent = `Ukuran setelah dikecilkan: ${Math.round(pending.length / 1024)} KB`;
+    } catch { pending = null; toast("Foto tidak bisa dibaca. Coba foto lain (JPG atau PNG).", "err"); $$f("phWrap").hidden = !init.id; }
+  };
+  $("[data-ok]", box).onclick = async () => {
+    const btn = $("[data-ok]", box);
+    if (!pending && !init.id) return toast("Pilih fotonya dulu ya.", "err");
+    const caption = $$f("phCap").value.replace(/[\[\]\n]/g, " ").trim(), size = $$f("phSize").value;
+    btn.disabled = true; const old = btn.innerHTML; btn.textContent = "Mengunggah…";
+    try {
+      let id = init.id;
+      if (pending) {
+        if (DEMO) { toast("Firebase belum terhubung (penanda 'Lokal'). Foto tidak akan tampil di perangkat lain.", "err"); return; }
+        id = "m-" + newId();
+        await withTimeout(db.set(`foto/${id}`, pending), 40000, "timeout mengunggah (koneksi lambat atau terputus)");
+        let back; try { back = await publicRead(`foto/${id}`); } catch (e) { if (e.code) { toast(`Server menolak dibaca publik (${e.message}). Periksa Rules.`, "err"); return; } }
+        if (back !== undefined && back !== pending) { toast("Foto belum ada di server. Coba lagi.", "err"); return; }
+        MFOTO[id] = pending;
+      }
+      onDone({ id, caption, size });
+      close();
+    } catch (e) { console.error(e); toast("Gagal mengunggah: " + (e.message || e), "err"); }
+    finally { if (btn.isConnected) { btn.disabled = false; btn.innerHTML = old; } }
+  };
+}
+
 /* Cari rumus $...$ atau $$...$$ yang mengapit posisi kursor. */
 function mathAt(text, pos) {
   const re = /\$\$([^$]+?)\$\$|\$([^$\n]+?)\$/g;
@@ -1119,7 +1227,7 @@ function fieldHTML(f) {
   else if (f.type === "select") input = `<select id="${id}">${f.options.map(([val, lab]) => `<option value="${esc(val)}" ${String(val) === String(v) ? "selected" : ""}>${esc(lab)}</option>`).join("")}</select>`;
   else if (f.type === "image") input = `<div class="imgpick"><img id="${id}_p" alt="Pratinjau foto" ${v ? `src="${esc(v)}"` : "hidden"}><input type="file" accept="image/*" id="${id}"></div>`;
   else input = `<input id="${id}" type="${f.type || "text"}" value="${esc(v)}" ${f.placeholder ? `placeholder="${esc(f.placeholder)}"` : ""}>`;
-  const mathUI = hasMath(f) ? `<span class="mathbar"><button class="btn sm sky" type="button" data-math="${f.key}">∑ Rumus</button>${f.type === "textarea" && f.table !== false ? `<button class="btn sm sun" type="button" data-tbl="${f.key}">▦ Tabel</button>` : ""}<small>Klik untuk menyisipkan rumus. Letakkan kursor di dalam rumus $...$ lalu klik lagi untuk mengubahnya.</small></span><div class="mathprev" id="${id}_v" hidden></div>` : "";
+  const mathUI = hasMath(f) ? `<span class="mathbar"><button class="btn sm sky" type="button" data-math="${f.key}">∑ Rumus</button>${f.type === "textarea" && f.table !== false ? `<button class="btn sm sun" type="button" data-tbl="${f.key}">▦ Tabel</button>` : ""}${f.type === "textarea" && f.foto !== false && session && session.role === "admin" ? `<button class="btn sm mint" type="button" data-fotobtn="${f.key}">🖼️ Foto</button>` : ""}<small>Klik untuk menyisipkan rumus. Letakkan kursor di dalam rumus $...$ lalu klik lagi untuk mengubahnya.</small></span><div class="mathprev" id="${id}_v" hidden></div>` : "";
   return `<div class="field"><label for="${id}">${esc(f.label)}</label>${input}${mathUI}${f.hint ? `<small>${esc(f.hint)}</small>` : ""}</div>`;
 }
 
@@ -1195,6 +1303,24 @@ function openForm({ title, intro = "", fields, onSave, saveLabel = "Simpan" }) {
         const pre = before && !before.endsWith("\n") ? "\n" : "", post = after && !after.startsWith("\n") ? "\n" : "";
         el.value = before + pre + md + post + after;
         const caret = (before + pre + md).length;
+        el.focus(); el.setSelectionRange(caret, caret);
+        el.dispatchEvent(new Event("input"));
+      });
+    };
+  });
+  fields.filter(f => hasMath(f) && f.type === "textarea" && f.foto !== false && session && session.role === "admin").forEach(f => {
+    const el = $(`#f_${f.key}`, root), btn = $(`[data-fotobtn="${f.key}"]`, root);
+    if (!el || !btn) return;
+    btn.onclick = () => {
+      const pos = el.selectionStart ?? el.value.length, hit = photoLineAt(el.value, pos);
+      openPhotoDialog(hit ? { id: hit.id, caption: hit.caption, size: hit.size } : {}, r => {
+        const token = `![${r.caption}](foto:${r.id}|${r.size})`;
+        let from, to; const text = el.value;
+        if (hit) { from = hit.start; to = hit.end; } else { from = pos; to = el.selectionEnd ?? pos; }
+        const before = text.slice(0, from), after = text.slice(to);
+        const pre = before && !before.endsWith("\n") ? "\n" : "", post = after && !after.startsWith("\n") ? "\n" : "";
+        el.value = before + pre + token + post + after;
+        const caret = (before + pre + token).length;
         el.focus(); el.setSelectionRange(caret, caret);
         el.dispatchEvent(new Event("input"));
       });
@@ -1876,11 +2002,11 @@ async function questionForm(kind, q, jenisAwal) {
       { key: "jenis", label: "Jenis soal", type: "select", value: jenis0, options: [["pg", "Pilihan ganda"], ["esai", "Esai (uraian)"]] },
       { key: "tingkat", label: "Tingkat berpikir", type: "select", value: levelCode(q?.tingkat) || (LEVELS.find(l => l.kode === "C3") ? "C3" : LEVELS[0].kode), options: LEVELS.map(l => [l.kode, `${l.kode} — ${l.nama}`]) },
       { key: "poin", label: "Poin untuk soal ini", type: "text", math: false, value: q?.poin ?? POIN_DEF[jenis0], placeholder: "contoh: 1", hint: "Boleh desimal (misal 0,5 atau 2,5). Nilai akhir = poin yang diperoleh ÷ total poin semua soal × 100. Contoh: pilihan ganda 1 poin, esai 5 poin." },
-      { key: "teks", label: "Pertanyaan", type: "textarea", rows: 3, value: q?.teks },
+      { key: "teks", label: "Pertanyaan", type: "textarea", rows: 3, value: q?.teks, foto: false },
       ...["A", "B", "C", "D"].map((L, k) => ({ key: `o${k}`, label: `Pilihan ${L}`, value: q?.opsi?.[k], math: true })),
       { key: "kunci", label: "Jawaban benar", type: "select", value: q?.kunci ?? 0, options: [[0, "A"], [1, "B"], [2, "C"], [3, "D"]] },
-      { key: "kunciEsai", label: "Pedoman jawaban / rubrik penilaian (ditampilkan ke siswa setelah selesai dan membantu guru menilai)", type: "textarea", rows: 4, value: q?.kunciEsai },
-      { key: "bahas", label: "Pembahasan (muncul setelah tes selesai)", type: "textarea", rows: 3, value: q?.bahas }
+      { key: "kunciEsai", label: "Pedoman jawaban / rubrik penilaian (ditampilkan ke siswa setelah selesai dan membantu guru menilai)", type: "textarea", rows: 4, value: q?.kunciEsai, foto: false },
+      { key: "bahas", label: "Pembahasan (muncul setelah tes selesai)", type: "textarea", rows: 3, value: q?.bahas, foto: false }
     ],
     onSave: async v => {
       const esai = v.jenis === "esai";
@@ -2792,6 +2918,7 @@ function showBanner(msg) {
   route();
 })();
 typesetSoon();
+hydrateSoon();
 
 </script>
 </body>
